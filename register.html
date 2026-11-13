@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Register | QA Hub</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div class="auth-container">
+        <div class="auth-box">
+
+            <h1>QA<span>Hub</span></h1>
+
+            <h2>Create Your Account</h2>
+            <p>Start your software testing journey today.</p>
+
+            <form id="registerForm">
+
+                <label>Full Name</label>
+                <input type="text" id="fullName"
+                       placeholder="Enter your name" required>
+
+                <label>Email Address</label>
+                <input type="email" id="email"
+                       placeholder="Enter your email" required>
+
+                <label>Password</label>
+                <input type="password" id="password"
+                       placeholder="Create a password" required>
+
+                <label>Confirm Password</label>
+                <input type="password" id="confirmPassword"
+                       placeholder="Confirm your password" required>
+
+                <button type="submit">Create Account</button>
+
+                <p id="message"></p>
+
+            </form>
+
+            <p class="auth-link">
+                Already have an account?
+                <a href="login.html">Login</a>
+            </p>
+
+            <a href="index.html" class="back-home">← Back to Home</a>
+
+        </div>
+    </div>
+
+    <script type="module">
+        import { supabase } from "./js/supabase.js";
+
+        const form = document.getElementById("registerForm");
+        const message = document.getElementById("message");
+
+        form.addEventListener("submit", async (event) => {
+            event.preventDefault();
+
+            const name = document.getElementById("fullName").value;
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            const confirmPassword = document.getElementById("confirmPassword").value;
+
+            if (password !== confirmPassword) {
+                message.textContent = "Passwords do not match!";
+                return;
+            }
+
+            const { data, error } = await supabase.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: {
+                        full_name: name
+                    }
+                }
+            });
+
+            if (error) {
+                message.textContent = error.message;
+            } else {
+                message.textContent = "Registration successful! Check your email for confirmation.";
+                form.reset();
+            }
+        });
+    </script>
+
+</body>
+</html>

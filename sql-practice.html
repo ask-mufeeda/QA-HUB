@@ -1,0 +1,2538 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>SQL Practice | QA Hub</title>
+
+<!-- SQL engine that runs inside the browser (SQLite) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+<style>
+
+* { box-sizing: border-box; }
+
+[hidden] { display: none !important; }
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f4f6fb;
+    margin: 0;
+    padding: 25px;
+    color: #1e293b;
+}
+
+.container { max-width: 1100px; margin: auto; }
+
+.card {
+    background: white;
+    padding: 24px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+h1, h2 { color: #172554; }
+h2 { margin-top: 0; }
+h3 { color: #1e40af; }
+a { color: #2563eb; }
+
+button {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #2563eb;
+    color: white;
+    font-size: 14px;
+    margin: 3px 3px 3px 0;
+}
+
+button:hover { opacity: 0.85; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-green { background: #15803d; }
+.btn-gray { background: #64748b; }
+.btn-red { background: #dc2626; }
+.btn-purple { background: #7c3aed; }
+.btn-light { background: #e2e8f0; color: #1e293b; }
+
+/* ---------- Progress ---------- */
+
+.progress-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.progress-text { font-weight: bold; }
+
+.level {
+    background: #ede9fe;
+    color: #6d28d9;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-weight: bold;
+    font-size: 13px;
+}
+
+.progress-track {
+    width: 100%;
+    height: 14px;
+    background: #e2e8f0;
+    border-radius: 7px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: #16a34a;
+    transition: width 0.3s;
+}
+
+/* ---------- Topic chips ---------- */
+
+.chip {
+    background: #e2e8f0;
+    color: #1e293b;
+    border-radius: 20px;
+    padding: 9px 14px;
+}
+
+.chip.active {
+    background: #172554;
+    color: white;
+}
+
+.chip-count { font-size: 12px; opacity: 0.8; margin-left: 4px; }
+
+/* ---------- Lesson ---------- */
+
+.lesson p, .lesson li { line-height: 1.7; }
+
+code {
+    background: #eef2ff;
+    color: #3730a3;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+}
+
+pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 14px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-family: Consolas, monospace;
+    font-size: 13px;
+    margin: 10px 0;
+    white-space: pre-wrap;
+}
+
+.tip {
+    background: #fef9c3;
+    border-left: 4px solid #eab308;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin: 12px 0;
+    line-height: 1.6;
+}
+
+.try-box {
+    background: #f8f7ff;
+    border: 1px solid #ddd6fe;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+/* ---------- Editor ---------- */
+
+textarea {
+    width: 100%;
+    min-height: 90px;
+    padding: 12px;
+    border: 1px solid #94a3b8;
+    border-radius: 6px;
+    font-family: Consolas, monospace;
+    font-size: 14px;
+    resize: vertical;
+    margin: 8px 0;
+}
+
+.msg-ok {
+    background: #dcfce7;
+    color: #166534;
+    padding: 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+.msg-error {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+.msg-info {
+    background: #dbeafe;
+    color: #1e40af;
+    padding: 12px;
+    border-radius: 6px;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+/* ---------- Tables ---------- */
+
+.table-wrap { overflow-x: auto; margin-top: 10px; }
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+}
+
+th, td {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    text-align: left;
+    font-size: 13px;
+}
+
+th { background: #172554; color: white; }
+
+.null { color: #94a3b8; font-style: italic; }
+
+.row-count { font-size: 13px; color: #64748b; margin: 8px 0 0; }
+
+/* ---------- Questions ---------- */
+
+.question {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 16px;
+    margin: 16px 0;
+    background: #f8fafc;
+}
+
+.question.solved {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.q-head {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    color: #172554;
+}
+
+.q-status { font-size: 13px; color: #15803d; }
+
+.q-text { font-size: 16px; line-height: 1.5; margin: 8px 0; }
+
+.q-tables {
+    font-size: 13px;
+    color: #475569;
+    background: #eef2ff;
+    padding: 8px 10px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    line-height: 1.6;
+}
+
+.q-hint {
+    background: #fef9c3;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+.q-explain {
+    background: #ede9fe;
+    color: #4c1d95;
+    padding: 10px 12px;
+    border-radius: 6px;
+    margin-top: 10px;
+    line-height: 1.6;
+}
+
+.badge-done {
+    background: #dcfce7;
+    color: #166534;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+/* ---------- Cheat sheet ---------- */
+
+details {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 10px 0;
+    background: #f8fafc;
+}
+
+summary { cursor: pointer; font-weight: bold; color: #172554; }
+
+details p { line-height: 1.7; margin-bottom: 0; }
+
+.small-note { font-size: 13px; color: #475569; margin: 6px 0; }
+
+@media (max-width: 700px) {
+    body { padding: 12px; }
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>QA Hub - SQL Practice</h1>
+
+<a href="app.html">← Back to Dashboard</a>
+
+
+<!-- PROGRESS -->
+
+<div class="card" style="margin-top:20px">
+
+    <div class="progress-top">
+        <span class="progress-text" id="progressText">Solved 0 of 0 questions</span>
+        <span class="level" id="levelBadge">Level: Beginner</span>
+    </div>
+
+    <div class="progress-track">
+        <div class="progress-fill" id="progressFill"></div>
+    </div>
+
+    <p id="engineStatus" class="msg-info">
+        Loading the SQL engine... please wait.
+    </p>
+
+    <button type="button" class="btn-light" id="resetProgressButton">
+        Reset my progress
+    </button>
+
+</div>
+
+
+<!-- TOPICS -->
+
+<div class="card">
+    <h2>Choose a topic</h2>
+    <div id="topicBar"></div>
+</div>
+
+
+<!-- TOPIC CONTENT -->
+
+<div id="topicContent"></div>
+
+</div>
+
+
+<script>
+
+// =================================
+// SETTINGS
+// =================================
+
+const SQL_CDN = "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/";
+
+const STORAGE_KEY = "qahub_sql_solved_v2";
+
+
+// =================================
+// PRACTICE DATABASE (sample data)
+// =================================
+
+const SEED = `
+
+CREATE TABLE users (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    role TEXT
+);
+
+INSERT INTO users VALUES (1, 'Aisha Khan', 'aisha@qahub.com', 'Tester');
+INSERT INTO users VALUES (2, 'Rahul Nair', 'rahul@qahub.com', 'Developer');
+INSERT INTO users VALUES (3, 'Meera Joseph', 'meera@qahub.com', 'Tester');
+INSERT INTO users VALUES (4, 'Sam Wilson', 'sam@qahub.com', 'Developer');
+INSERT INTO users VALUES (5, 'Fatima Noor', 'fatima@qahub.com', 'Admin');
+
+CREATE TABLE bugs (
+    id INTEGER PRIMARY KEY,
+    title TEXT,
+    module TEXT,
+    priority TEXT,
+    status TEXT,
+    reported_by INTEGER,
+    assigned_to INTEGER
+);
+
+INSERT INTO bugs VALUES (1, 'Login button not working', 'Login', 'High', 'Open', 1, 2);
+INSERT INTO bugs VALUES (2, 'Wrong error message on registration', 'Registration', 'Medium', 'In Progress', 3, 4);
+INSERT INTO bugs VALUES (3, 'Password reset email not received', 'Login', 'High', 'Open', 1, 2);
+INSERT INTO bugs VALUES (4, 'Dashboard chart shows wrong count', 'Dashboard', 'Low', 'Closed', 3, 4);
+INSERT INTO bugs VALUES (5, 'Screenshot upload fails', 'Bug Report', 'High', 'In Progress', 1, 4);
+INSERT INTO bugs VALUES (6, 'Typo on home page', 'Home', 'Low', 'Closed', 3, NULL);
+INSERT INTO bugs VALUES (7, 'Page is slow to load', 'Dashboard', 'Medium', 'Open', 1, 2);
+INSERT INTO bugs VALUES (8, 'Email field accepts invalid format', 'Registration', 'High', 'Open', 3, 4);
+INSERT INTO bugs VALUES (9, 'Logout does not clear session', 'Login', 'Medium', 'Closed', 1, 2);
+INSERT INTO bugs VALUES (10, 'CSV download has missing columns', 'Manual Testing', 'Medium', 'Open', 3, NULL);
+
+CREATE TABLE test_cases (
+    id INTEGER PRIMARY KEY,
+    title TEXT,
+    module TEXT,
+    status TEXT
+);
+
+INSERT INTO test_cases VALUES (1, 'Verify login with valid credentials', 'Login', 'Pass');
+INSERT INTO test_cases VALUES (2, 'Verify login with wrong password', 'Login', 'Pass');
+INSERT INTO test_cases VALUES (3, 'Verify empty email on registration', 'Registration', 'Fail');
+INSERT INTO test_cases VALUES (4, 'Verify password length', 'Registration', 'Pass');
+INSERT INTO test_cases VALUES (5, 'Verify bug submission', 'Bug Report', 'Fail');
+INSERT INTO test_cases VALUES (6, 'Verify screenshot upload', 'Bug Report', 'Not Run');
+INSERT INTO test_cases VALUES (7, 'Verify dashboard counts', 'Dashboard', 'Not Run');
+INSERT INTO test_cases VALUES (8, 'Verify CSV download', 'Manual Testing', 'Pass');
+
+CREATE TABLE signups (
+    id INTEGER PRIMARY KEY,
+    name TEXT,
+    email TEXT,
+    signup_date TEXT
+);
+
+INSERT INTO signups VALUES (1, 'Aisha Khan', 'aisha@qahub.com', '2026-11-01');
+INSERT INTO signups VALUES (2, 'Rahul Nair', 'rahul@qahub.com', '2026-11-02');
+INSERT INTO signups VALUES (3, 'Aisha K', 'aisha@qahub.com', '2026-11-03');
+INSERT INTO signups VALUES (4, 'Meera Joseph', 'meera@qahub.com', '2026-11-03');
+INSERT INTO signups VALUES (5, 'Rahul N', 'rahul@qahub.com', '2026-11-04');
+INSERT INTO signups VALUES (6, 'Aisha Khan', 'aisha@qahub.com', '2026-11-05');
+INSERT INTO signups VALUES (7, 'Sam Wilson', NULL, '2026-11-05');
+
+`;
+
+const TABLE_INFO = {
+
+    users: "id, name, email, role",
+
+    bugs: "id, title, module, priority, status, reported_by (a user id), assigned_to (a user id, or NULL)",
+
+    test_cases: "id, title, module, status",
+
+    signups: "id, name, email, signup_date"
+
+};
+
+
+// =================================
+// TOPICS, LESSONS AND QUESTIONS
+// =================================
+
+const topics = [
+
+{
+    id: "intro",
+    name: "Introduction",
+    type: "lesson",
+
+    lesson: `
+        <h2>Introduction to SQL</h2>
+        <p>
+            <strong>SQL</strong> (Structured Query Language) is the language
+            we use to talk to a database.
+        </p>
+        <p>
+            A database stores data in <strong>tables</strong>.
+            A table has <strong>columns</strong> (like name, email)
+            and <strong>rows</strong> (one record per row).
+        </p>
+        <p>
+            As a tester, you use SQL to check that the data saved by an
+            application is correct. For example: "Was the new user saved?"
+            or "Is the bug status correct?"
+        </p>
+        <p>
+            This page has 4 practice tables:
+            <code>users</code>, <code>bugs</code>, <code>test_cases</code>
+            and <code>signups</code>.
+        </p>
+        <div class="tip">
+            Every SQL statement ends with a semicolon <code>;</code>.
+            Keywords like SELECT are not case-sensitive, but writing them
+            in capital letters makes them easy to read.
+        </div>
+    `,
+
+    syntax: "",
+
+    examples: [
+        { label: "Show all users", sql: "SELECT * FROM users;" },
+        { label: "Show all bugs", sql: "SELECT * FROM bugs;" }
+    ],
+
+    questions: [
+        {
+            id: "intro-1",
+            q: "Show every column and every row of the users table.",
+            tables: ["users"],
+            hint: "Use SELECT * FROM table_name. The star (*) means all columns.",
+            answer: "SELECT * FROM users;",
+            ordered: false
+        }
+    ]
+},
+
+
+{
+    id: "select",
+    name: "SELECT",
+    type: "lesson",
+
+    lesson: `
+        <h2>SELECT</h2>
+        <p>
+            <code>SELECT</code> chooses which columns you want to see.
+            Use <code>*</code> to see all columns.
+        </p>
+        <p>
+            <code>DISTINCT</code> removes repeated values, so each value
+            shows only once.
+        </p>
+    `,
+
+    syntax: "SELECT column1, column2\nFROM table_name;",
+
+    examples: [
+        { label: "All columns", sql: "SELECT * FROM bugs;" },
+        { label: "Chosen columns", sql: "SELECT title, priority FROM bugs;" },
+        { label: "Different modules", sql: "SELECT DISTINCT module FROM bugs;" }
+    ],
+
+    questions: [
+        {
+            id: "sel-1",
+            q: "Show only the name and email columns of the users table.",
+            tables: ["users"],
+            hint: "Write the column names after SELECT, separated by a comma.",
+            answer: "SELECT name, email FROM users;",
+            ordered: false
+        },
+        {
+            id: "sel-2",
+            q: "Show the title and priority of all bugs.",
+            tables: ["bugs"],
+            hint: "SELECT title, priority FROM ... which table?",
+            answer: "SELECT title, priority FROM bugs;",
+            ordered: false
+        },
+        {
+            id: "sel-3",
+            q: "Show the different modules in the bugs table. Each module must appear only once.",
+            tables: ["bugs"],
+            hint: "Put the word DISTINCT right after SELECT.",
+            answer: "SELECT DISTINCT module FROM bugs;",
+            ordered: false
+        }
+    ]
+},
+
+
+{
+    id: "where",
+    name: "WHERE",
+    type: "lesson",
+
+    lesson: `
+        <h2>WHERE</h2>
+        <p>
+            <code>WHERE</code> filters the rows. Only the rows that match
+            your condition are shown.
+        </p>
+        <p>Useful words you can use with WHERE:</p>
+        <p>
+            <code>AND</code> (both conditions true),
+            <code>OR</code> (one condition true),
+            <code>IN</code> (value is in a list),
+            <code>LIKE</code> (text contains something),
+            <code>IS NULL</code> (value is empty).
+        </p>
+        <div class="tip">
+            Text must be inside single quotes, like <code>'High'</code>.
+            Numbers do not need quotes. With <code>LIKE</code>, the sign
+            <code>%</code> means "any text".
+        </div>
+    `,
+
+    syntax: "SELECT * FROM table_name\nWHERE column = 'value';",
+
+    examples: [
+        { label: "One condition", sql: "SELECT * FROM bugs WHERE priority = 'High';" },
+        { label: "AND", sql: "SELECT * FROM bugs WHERE module = 'Login' AND status = 'Open';" },
+        { label: "IN", sql: "SELECT * FROM users WHERE role IN ('Tester', 'Admin');" },
+        { label: "LIKE", sql: "SELECT * FROM bugs WHERE title LIKE '%upload%';" },
+        { label: "IS NULL", sql: "SELECT * FROM bugs WHERE assigned_to IS NULL;" }
+    ],
+
+    questions: [
+        {
+            id: "whe-1",
+            q: "Find all bugs with High priority.",
+            tables: ["bugs"],
+            hint: "WHERE priority = 'High'",
+            answer: "SELECT * FROM bugs WHERE priority = 'High';",
+            ordered: false
+        },
+        {
+            id: "whe-2",
+            q: "Find all bugs in the Login module that are still Open.",
+            tables: ["bugs"],
+            hint: "Use AND to join two conditions.",
+            answer: "SELECT * FROM bugs WHERE module = 'Login' AND status = 'Open';",
+            ordered: false
+        },
+        {
+            id: "whe-3",
+            q: "Find all users whose role is Tester or Admin.",
+            tables: ["users"],
+            hint: "Use IN ('Tester', 'Admin') or use OR.",
+            answer: "SELECT * FROM users WHERE role IN ('Tester', 'Admin');",
+            ordered: false
+        },
+        {
+            id: "whe-4",
+            q: "Find all bugs whose title contains the word email.",
+            tables: ["bugs"],
+            hint: "Use LIKE '%email%'.",
+            answer: "SELECT * FROM bugs WHERE title LIKE '%email%';",
+            ordered: false
+        },
+        {
+            id: "whe-5",
+            q: "Find all bugs that are not assigned to anyone.",
+            tables: ["bugs"],
+            hint: "Empty values are NULL. Use IS NULL, not = NULL.",
+            answer: "SELECT * FROM bugs WHERE assigned_to IS NULL;",
+            ordered: false
+        }
+    ]
+},
+
+
+{
+    id: "orderby",
+    name: "ORDER BY",
+    type: "lesson",
+
+    lesson: `
+        <h2>ORDER BY</h2>
+        <p>
+            <code>ORDER BY</code> sorts the result.
+            <code>ASC</code> means small to large (A to Z).
+            <code>DESC</code> means large to small (Z to A).
+            If you write nothing, ASC is used.
+        </p>
+        <p>
+            <code>LIMIT</code> shows only the first few rows.
+        </p>
+    `,
+
+    syntax: "SELECT * FROM table_name\nORDER BY column DESC\nLIMIT 3;",
+
+    examples: [
+        { label: "A to Z", sql: "SELECT * FROM users ORDER BY name ASC;" },
+        { label: "Z to A", sql: "SELECT * FROM users ORDER BY name DESC;" },
+        { label: "First 3 rows", sql: "SELECT * FROM bugs ORDER BY id DESC LIMIT 3;" }
+    ],
+
+    questions: [
+        {
+            id: "ord-1",
+            q: "Show all bugs sorted by title from A to Z.",
+            tables: ["bugs"],
+            hint: "ORDER BY title ASC",
+            answer: "SELECT * FROM bugs ORDER BY title ASC;",
+            ordered: true
+        },
+        {
+            id: "ord-2",
+            q: "Show only the name column of all users, sorted from Z to A.",
+            tables: ["users"],
+            hint: "SELECT name FROM users ORDER BY name DESC",
+            answer: "SELECT name FROM users ORDER BY name DESC;",
+            ordered: true
+        },
+        {
+            id: "ord-3",
+            q: "Show the 3 bugs with the highest id (biggest id first).",
+            tables: ["bugs"],
+            hint: "ORDER BY id DESC and then LIMIT 3.",
+            answer: "SELECT * FROM bugs ORDER BY id DESC LIMIT 3;",
+            ordered: true
+        }
+    ]
+},
+
+
+{
+    id: "groupby",
+    name: "GROUP BY",
+    type: "lesson",
+
+    lesson: `
+        <h2>GROUP BY</h2>
+        <p>
+            <code>GROUP BY</code> puts rows with the same value into one
+            group. It is often used with <code>COUNT(*)</code> to count rows.
+        </p>
+        <p>
+            <code>HAVING</code> filters the groups after they are counted.
+            (<code>WHERE</code> filters rows before grouping.)
+        </p>
+        <p>
+            Other useful functions: <code>MIN</code>, <code>MAX</code>,
+            <code>SUM</code> and <code>AVG</code>.
+        </p>
+        <div class="tip">
+            Testers use this a lot. For example: "How many bugs are Open,
+            Closed and In Progress?"
+        </div>
+    `,
+
+    syntax: "SELECT column, COUNT(*)\nFROM table_name\nGROUP BY column;",
+
+    examples: [
+        { label: "Count by status", sql: "SELECT status, COUNT(*) FROM bugs GROUP BY status;" },
+        { label: "HAVING", sql: "SELECT module, COUNT(*) FROM bugs GROUP BY module HAVING COUNT(*) > 2;" },
+        { label: "Count all rows", sql: "SELECT COUNT(*) FROM bugs;" },
+        { label: "MIN and MAX", sql: "SELECT MIN(id), MAX(id) FROM bugs;" }
+    ],
+
+    questions: [
+        {
+            id: "grp-1",
+            q: "Count how many bugs there are in each status. Show the status and the count.",
+            tables: ["bugs"],
+            hint: "SELECT status, COUNT(*) FROM bugs GROUP BY status",
+            answer: "SELECT status, COUNT(*) FROM bugs GROUP BY status;",
+            ordered: false
+        },
+        {
+            id: "grp-2",
+            q: "Count the bugs in each module, but show only the modules that have more than 1 bug.",
+            tables: ["bugs"],
+            hint: "Add HAVING COUNT(*) > 1 after GROUP BY.",
+            answer: "SELECT module, COUNT(*) FROM bugs GROUP BY module HAVING COUNT(*) > 1;",
+            ordered: false
+        },
+        {
+            id: "grp-3",
+            q: "Count how many test cases there are in each status. Show the status and the count.",
+            tables: ["test_cases"],
+            hint: "Same idea as the first question, but use the test_cases table.",
+            answer: "SELECT status, COUNT(*) FROM test_cases GROUP BY status;",
+            ordered: false
+        },
+        {
+            id: "grp-4",
+            q: "How many bugs have High priority? Show only one number.",
+            tables: ["bugs"],
+            hint: "Use COUNT(*) with a WHERE condition. No GROUP BY needed.",
+            answer: "SELECT COUNT(*) FROM bugs WHERE priority = 'High';",
+            ordered: false
+        }
+    ]
+},
+
+
+{
+    id: "insert",
+    name: "INSERT",
+    type: "lesson",
+
+    lesson: `
+        <h2>INSERT</h2>
+        <p>
+            <code>INSERT</code> adds a new row to a table.
+            Testers use it to create test data.
+        </p>
+        <p>
+            Write the column names, then the values in the same order.
+        </p>
+        <div class="tip">
+            After you click Run, the page shows the table so you can see
+            your new row. Every Run starts from the original data,
+            so you can try again safely.
+        </div>
+    `,
+
+    syntax: "INSERT INTO table_name (column1, column2)\nVALUES ('value1', 'value2');",
+
+    examples: [
+        {
+            label: "Add a user",
+            sql: "INSERT INTO users (id, name, email, role)\nVALUES (6, 'Test User', 'test@qahub.com', 'Tester');"
+        }
+    ],
+
+    questions: [
+        {
+            id: "ins-1",
+            q: "Add a new user: id 6, name 'Ravi Kumar', email 'ravi@qahub.com', role 'Tester'.",
+            tables: ["users"],
+            hint: "INSERT INTO users (id, name, email, role) VALUES (...);",
+            answer: "INSERT INTO users (id, name, email, role) VALUES (6, 'Ravi Kumar', 'ravi@qahub.com', 'Tester');",
+            ordered: true,
+            verify: "SELECT * FROM users ORDER BY id;"
+        },
+        {
+            id: "ins-2",
+            q: "Add a new bug: id 11, title 'Search not working', module 'Home', priority 'High', status 'Open', reported_by 1, assigned_to 2.",
+            tables: ["bugs"],
+            hint: "The bugs table has 7 columns. Give a value for each one.",
+            answer: "INSERT INTO bugs (id, title, module, priority, status, reported_by, assigned_to) VALUES (11, 'Search not working', 'Home', 'High', 'Open', 1, 2);",
+            ordered: true,
+            verify: "SELECT * FROM bugs ORDER BY id;"
+        }
+    ]
+},
+
+
+{
+    id: "update",
+    name: "UPDATE",
+    type: "lesson",
+
+    lesson: `
+        <h2>UPDATE</h2>
+        <p>
+            <code>UPDATE</code> changes data that is already in a table.
+            Testers use it to set up a test situation.
+        </p>
+        <div class="tip">
+            <strong>Be careful:</strong> always use <code>WHERE</code> with
+            UPDATE. Without WHERE, <strong>every row</strong> is changed.
+        </div>
+    `,
+
+    syntax: "UPDATE table_name\nSET column = 'new value'\nWHERE condition;",
+
+    examples: [
+        { label: "Change one bug", sql: "UPDATE bugs SET status = 'Closed' WHERE id = 3;" },
+        { label: "Change many rows", sql: "UPDATE bugs SET priority = 'Low' WHERE module = 'Home';" }
+    ],
+
+    questions: [
+        {
+            id: "upd-1",
+            q: "Change the status of the bug with id 1 to 'Closed'.",
+            tables: ["bugs"],
+            hint: "UPDATE bugs SET status = 'Closed' WHERE id = 1;",
+            answer: "UPDATE bugs SET status = 'Closed' WHERE id = 1;",
+            ordered: true,
+            verify: "SELECT * FROM bugs ORDER BY id;"
+        },
+        {
+            id: "upd-2",
+            q: "Set the priority to 'High' for all bugs in the Dashboard module.",
+            tables: ["bugs"],
+            hint: "Use WHERE module = 'Dashboard'.",
+            answer: "UPDATE bugs SET priority = 'High' WHERE module = 'Dashboard';",
+            ordered: true,
+            verify: "SELECT * FROM bugs ORDER BY id;"
+        },
+        {
+            id: "upd-3",
+            q: "Change the role of the user named 'Sam Wilson' to 'Tester'.",
+            tables: ["users"],
+            hint: "UPDATE users SET role = ... WHERE name = ...",
+            answer: "UPDATE users SET role = 'Tester' WHERE name = 'Sam Wilson';",
+            ordered: true,
+            verify: "SELECT * FROM users ORDER BY id;"
+        }
+    ]
+},
+
+
+{
+    id: "delete",
+    name: "DELETE",
+    type: "lesson",
+
+    lesson: `
+        <h2>DELETE</h2>
+        <p>
+            <code>DELETE</code> removes rows from a table.
+            Testers use it to clean up test data.
+        </p>
+        <div class="tip">
+            <strong>Be careful:</strong> always use <code>WHERE</code> with
+            DELETE. Without WHERE, <strong>all rows</strong> are deleted.
+            Here the data comes back on the next Run. In a real database
+            it does not.
+        </div>
+    `,
+
+    syntax: "DELETE FROM table_name\nWHERE condition;",
+
+    examples: [
+        { label: "Delete one bug", sql: "DELETE FROM bugs WHERE id = 6;" },
+        { label: "Delete many rows", sql: "DELETE FROM bugs WHERE status = 'Closed';" }
+    ],
+
+    questions: [
+        {
+            id: "del-1",
+            q: "Delete the bug with id 6.",
+            tables: ["bugs"],
+            hint: "DELETE FROM bugs WHERE id = 6;",
+            answer: "DELETE FROM bugs WHERE id = 6;",
+            ordered: true,
+            verify: "SELECT * FROM bugs ORDER BY id;"
+        },
+        {
+            id: "del-2",
+            q: "Delete all bugs that have the status 'Closed'.",
+            tables: ["bugs"],
+            hint: "Use WHERE status = 'Closed'.",
+            answer: "DELETE FROM bugs WHERE status = 'Closed';",
+            ordered: true,
+            verify: "SELECT * FROM bugs ORDER BY id;"
+        },
+        {
+            id: "del-3",
+            q: "Delete all test cases whose status is 'Not Run'.",
+            tables: ["test_cases"],
+            hint: "DELETE FROM test_cases WHERE ...",
+            answer: "DELETE FROM test_cases WHERE status = 'Not Run';",
+            ordered: true,
+            verify: "SELECT * FROM test_cases ORDER BY id;"
+        }
+    ]
+},
+
+
+{
+    id: "join",
+    name: "JOIN",
+    type: "lesson",
+
+    lesson: `
+        <h2>JOIN</h2>
+        <p>
+            Sometimes the data you need is in two tables.
+            <code>JOIN</code> connects them using a matching column.
+        </p>
+        <p>
+            In our data, <code>bugs.reported_by</code> is the id of a user.
+            It matches <code>users.id</code>. So we can join the two tables
+            to see the reporter's name.
+        </p>
+        <p>
+            <code>JOIN</code> (or INNER JOIN) shows only the rows that match
+            in both tables.
+            <code>LEFT JOIN</code> shows all rows from the first table, even
+            when there is no match (the missing values show as NULL).
+        </p>
+        <div class="tip">
+            Write the table name before the column name
+            (like <code>bugs.title</code>) so SQL knows which table you mean.
+        </div>
+    `,
+
+    syntax: "SELECT bugs.title, users.name\nFROM bugs\nJOIN users ON bugs.reported_by = users.id;",
+
+    examples: [
+        {
+            label: "JOIN",
+            sql: "SELECT bugs.title, users.name\nFROM bugs\nJOIN users ON bugs.reported_by = users.id;"
+        },
+        {
+            label: "LEFT JOIN",
+            sql: "SELECT bugs.title, users.name\nFROM bugs\nLEFT JOIN users ON bugs.assigned_to = users.id;"
+        }
+    ],
+
+    questions: [
+        {
+            id: "joi-1",
+            q: "Show each bug title together with the name of the person who reported it.",
+            tables: ["bugs", "users"],
+            hint: "Join bugs and users with bugs.reported_by = users.id.",
+            answer: "SELECT bugs.title, users.name FROM bugs JOIN users ON bugs.reported_by = users.id;",
+            ordered: false
+        },
+        {
+            id: "joi-2",
+            q: "Show each bug title and the name of the person it is assigned to. Bugs with no assignee must also appear (the name will be NULL).",
+            tables: ["bugs", "users"],
+            hint: "Use LEFT JOIN with bugs.assigned_to = users.id.",
+            answer: "SELECT bugs.title, users.name FROM bugs LEFT JOIN users ON bugs.assigned_to = users.id;",
+            ordered: false
+        },
+        {
+            id: "joi-3",
+            q: "Show each reporter's name and how many bugs they reported (only people who reported at least one bug).",
+            tables: ["bugs", "users"],
+            hint: "JOIN users and bugs, then COUNT(bugs.id) and GROUP BY users.name.",
+            answer: "SELECT users.name, COUNT(bugs.id) FROM users JOIN bugs ON bugs.reported_by = users.id GROUP BY users.name;",
+            ordered: false
+        }
+    ]
+},
+
+
+{
+    id: "datatesting",
+    name: "Data Testing",
+    type: "lesson",
+
+    lesson: `
+        <h2>Data Testing with SQL</h2>
+        <p>
+            This is what testers really do with SQL: <strong>check that the
+            data in the database is clean and correct</strong>.
+        </p>
+        <p>Common checks:</p>
+        <ul>
+            <li><strong>Duplicates:</strong> the same email saved twice.</li>
+            <li><strong>Missing values:</strong> a required field is NULL.</li>
+            <li><strong>Wrong data:</strong> a status or count that does not match the screen.</li>
+            <li><strong>Clean-up:</strong> remove test data after testing.</li>
+        </ul>
+        <p>
+            A <strong>subquery</strong> is a query inside brackets. The inner
+            query runs first, and the outer query uses its result.
+        </p>
+        <div class="tip">
+            The <code>signups</code> table has some problems on purpose:
+            repeated emails and a missing email. Can you find them?
+        </div>
+    `,
+
+    syntax: "SELECT email, COUNT(*)\nFROM signups\nGROUP BY email\nHAVING COUNT(*) > 1;",
+
+    examples: [
+        { label: "Find duplicates", sql: "SELECT email, COUNT(*) FROM signups GROUP BY email HAVING COUNT(*) > 1;" },
+        { label: "Subquery", sql: "SELECT * FROM users WHERE id NOT IN (SELECT reported_by FROM bugs);" }
+    ],
+
+    questions: [
+        {
+            id: "dat-1",
+            q: "Find the duplicate emails in the signups table. Show the email and how many times it appears (only emails that appear more than once).",
+            tables: ["signups"],
+            hint: "GROUP BY email, then HAVING COUNT(*) > 1.",
+            answer: "SELECT email, COUNT(*) FROM signups GROUP BY email HAVING COUNT(*) > 1;",
+            ordered: false,
+            explain: "I group the rows by email, count each group, and keep only the groups with a count above 1. Those emails are duplicates."
+        },
+        {
+            id: "dat-2",
+            q: "Find all signups where the email is missing.",
+            tables: ["signups"],
+            hint: "Missing values are NULL. Use IS NULL.",
+            answer: "SELECT * FROM signups WHERE email IS NULL;",
+            ordered: false,
+            explain: "A required field must not be NULL. I use IS NULL (not = NULL) to find the rows with missing data."
+        },
+        {
+            id: "dat-3",
+            q: "How many bugs are not assigned to anyone? Show only one number.",
+            tables: ["bugs"],
+            hint: "COUNT(*) with WHERE assigned_to IS NULL.",
+            answer: "SELECT COUNT(*) FROM bugs WHERE assigned_to IS NULL;",
+            ordered: false,
+            explain: "I compare this number with the count shown on the dashboard. If they are different, I have found a bug."
+        },
+        {
+            id: "dat-4",
+            q: "Show the names of users who have not reported any bug.",
+            tables: ["users", "bugs"],
+            hint: "Use NOT IN with a subquery: id NOT IN (SELECT reported_by FROM bugs).",
+            answer: "SELECT name FROM users WHERE id NOT IN (SELECT reported_by FROM bugs);",
+            ordered: false,
+            explain: "The inner query lists everyone who reported a bug. The outer query returns the users who are not in that list."
+        },
+        {
+            id: "dat-5",
+            q: "Remove the duplicate signups. Keep only the first row (lowest id) for each email.",
+            tables: ["signups"],
+            hint: "DELETE FROM signups WHERE id NOT IN (SELECT MIN(id) FROM signups GROUP BY email);",
+            answer: "DELETE FROM signups WHERE id NOT IN (SELECT MIN(id) FROM signups GROUP BY email);",
+            ordered: true,
+            verify: "SELECT * FROM signups ORDER BY id;",
+            explain: "For each email I find the smallest id with MIN(id). Then I delete every row whose id is not in that list."
+        }
+    ]
+},
+
+
+{
+    id: "interview",
+    name: "Interview Prep",
+    type: "lesson",
+
+    lesson: `
+        <h2>Interview Prep</h2>
+        <p>
+            These questions are like the ones asked in QA and testing
+            interviews. After you solve each one, you will see
+            <strong>how to say the answer in words</strong>.
+        </p>
+        <div class="tip">
+            In an interview, do not only write the query. Also explain it
+            in 1 or 2 simple sentences. Interviewers love testers who can
+            explain their thinking.
+        </div>
+    `,
+
+    syntax: "",
+
+    examples: [
+        { label: "Top row only", sql: "SELECT module, COUNT(*) FROM bugs GROUP BY module ORDER BY COUNT(*) DESC LIMIT 1;" }
+    ],
+
+    questions: [
+        {
+            id: "int-1",
+            q: "Which module has the most bugs? Show the module and its bug count (only 1 row).",
+            tables: ["bugs"],
+            hint: "GROUP BY module, ORDER BY COUNT(*) DESC, then LIMIT 1.",
+            answer: "SELECT module, COUNT(*) FROM bugs GROUP BY module ORDER BY COUNT(*) DESC LIMIT 1;",
+            ordered: true,
+            explain: "I count the bugs in each module, sort the counts from biggest to smallest, and take the first row."
+        },
+        {
+            id: "int-2",
+            q: "Show the title of each bug and the name of the reporter, but only for bugs that are High priority and Open.",
+            tables: ["bugs", "users"],
+            hint: "JOIN bugs and users, then add WHERE priority = 'High' AND status = 'Open'.",
+            answer: "SELECT bugs.title, users.name FROM bugs JOIN users ON bugs.reported_by = users.id WHERE bugs.priority = 'High' AND bugs.status = 'Open';",
+            ordered: false,
+            explain: "I join the two tables on the user id, then filter for urgent bugs that are still open."
+        },
+        {
+            id: "int-3",
+            q: "For each module, count the test cases that failed. Show the module and the count (only modules that have failed tests).",
+            tables: ["test_cases"],
+            hint: "WHERE status = 'Fail', then GROUP BY module.",
+            answer: "SELECT module, COUNT(*) FROM test_cases WHERE status = 'Fail' GROUP BY module;",
+            ordered: false,
+            explain: "WHERE keeps only the failed tests first. Then GROUP BY counts them for each module."
+        },
+        {
+            id: "int-4",
+            q: "Show the titles of the 3 newest bugs (highest id) that are not Closed.",
+            tables: ["bugs"],
+            hint: "WHERE status != 'Closed', ORDER BY id DESC, LIMIT 3.",
+            answer: "SELECT title FROM bugs WHERE status != 'Closed' ORDER BY id DESC LIMIT 3;",
+            ordered: true,
+            explain: "I filter out closed bugs, sort by id from newest to oldest, and keep the first 3 rows."
+        },
+        {
+            id: "int-5",
+            q: "Show the name of each person who is assigned bugs and how many bugs are assigned to them.",
+            tables: ["bugs", "users"],
+            hint: "JOIN on bugs.assigned_to = users.id, then COUNT(*) and GROUP BY users.name.",
+            answer: "SELECT users.name, COUNT(*) FROM bugs JOIN users ON bugs.assigned_to = users.id GROUP BY users.name;",
+            ordered: false,
+            explain: "I join to get the developer's name, then count the bugs for each name. Bugs with no assignee are left out by the JOIN."
+        }
+    ]
+},
+
+
+{
+    id: "playground",
+    name: "Playground",
+    type: "playground"
+},
+
+
+{
+    id: "cheat",
+    name: "Cheat Sheet & Q&A",
+    type: "cheat"
+}
+
+];
+
+
+// =================================
+// STATE
+// =================================
+
+let SQL = null;
+
+let viewDb = null;
+
+let playDb = null;
+
+let currentTopic = "intro";
+
+let currentPlayTable = "users";
+
+let solved = loadSolved();
+
+
+// =================================
+// ELEMENTS
+// =================================
+
+const topicBar = document.getElementById("topicBar");
+
+const topicContent = document.getElementById("topicContent");
+
+const engineStatus = document.getElementById("engineStatus");
+
+
+// =================================
+// SMALL HELPERS
+// =================================
+
+function escapeHTML(value) {
+
+    return String(value ?? "").replace(/[&<>"']/g, char => ({
+
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;"
+
+    })[char]);
+
+}
+
+
+function loadSolved() {
+
+    try {
+
+        const saved = JSON.parse(
+            localStorage.getItem(STORAGE_KEY) || "[]"
+        );
+
+        return new Set(Array.isArray(saved) ? saved : []);
+
+    }
+
+    catch (error) {
+
+        return new Set();
+
+    }
+
+}
+
+
+function saveSolved() {
+
+    try {
+
+        localStorage.setItem(
+            STORAGE_KEY,
+            JSON.stringify([...solved])
+        );
+
+    }
+
+    catch (error) {
+
+        // browser storage is not available, progress is not saved
+
+    }
+
+}
+
+
+function allQuestions() {
+
+    return topics.flatMap(topic => topic.questions || []);
+
+}
+
+
+function findTopic(id) {
+
+    return topics.find(topic => topic.id === id);
+
+}
+
+
+function findQuestion(id) {
+
+    return allQuestions().find(question => question.id === id);
+
+}
+
+
+function createFreshDatabase() {
+
+    const database = new SQL.Database();
+
+    database.run(SEED);
+
+    return database;
+
+}
+
+
+// =================================
+// RUNNING SQL
+// =================================
+
+// Checks if the last statement is a SELECT (a query that shows rows)
+function lastStatementIsSelect(sql) {
+
+    const statements = sql.split(";")
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    if (statements.length === 0) return false;
+
+    return /^(select|with|pragma)\b/i.test(
+        statements[statements.length - 1]
+    );
+
+}
+
+
+function runOn(database, sql) {
+
+    const sets = database.exec(sql);
+
+    const isSelect = lastStatementIsSelect(sql);
+
+    const last = sets.length ? sets[sets.length - 1] : null;
+
+    return {
+
+        columns: last ? last.columns : [],
+
+        rows: last ? last.values : [],
+
+        isSelect: isSelect,
+
+        hasTable: sets.length > 0 || isSelect
+
+    };
+
+}
+
+
+function friendlyError(message) {
+
+    const text = String(message);
+
+    let match = text.match(/no such table: (.+)/i);
+
+    if (match) {
+
+        return "There is no table called '" + match[1] +
+            "'. The tables are: users, bugs, test_cases, signups.";
+
+    }
+
+    match = text.match(/no such column: (.+)/i);
+
+    if (match) {
+
+        return "There is no column called '" + match[1] +
+            "'. Check the column names of the table.";
+
+    }
+
+    if (/syntax error/i.test(text)) {
+
+        return "SQL syntax error. Check spelling, commas, quotes and " +
+            "brackets. (" + text + ")";
+
+    }
+
+    if (/UNIQUE constraint/i.test(text)) {
+
+        return "That id already exists in the table. Use a new id. (" +
+            text + ")";
+
+    }
+
+    return text;
+
+}
+
+
+// =================================
+// SHOWING TABLES
+// =================================
+
+function renderResultTable(columns, values) {
+
+    const limit = 200;
+
+    const shown = values.slice(0, limit);
+
+    let html = '<div class="row-count">' + values.length + " row(s)" +
+        (values.length > limit
+            ? " (showing the first " + limit + ")"
+            : "") +
+        "</div>";
+
+    html += '<div class="table-wrap"><table><thead><tr>' +
+        columns.map(column =>
+            "<th>" + escapeHTML(column) + "</th>"
+        ).join("") +
+        "</tr></thead><tbody>";
+
+    html += shown.map(row =>
+        "<tr>" + row.map(value =>
+            "<td>" + (value === null
+                ? '<span class="null">NULL</span>'
+                : escapeHTML(value)) + "</td>"
+        ).join("") + "</tr>"
+    ).join("");
+
+    html += "</tbody></table></div>";
+
+    return html;
+
+}
+
+
+function showTableByName(database, tableName) {
+
+    const sets = database.exec("SELECT * FROM " + tableName);
+
+    if (sets.length === 0) {
+
+        return '<div class="msg-info">The table ' +
+            escapeHTML(tableName) + " has no rows.</div>";
+
+    }
+
+    return renderResultTable(sets[0].columns, sets[0].values);
+
+}
+
+
+// Runs the SQL and returns the HTML to show
+function runAndRender(database, sql, verifySql) {
+
+    try {
+
+        const result = runOn(database, sql);
+
+        if (result.hasTable) {
+
+            if (result.rows.length === 0) {
+
+                return '<div class="msg-info">Your query ran correctly, ' +
+                    "but 0 rows matched.</div>";
+
+            }
+
+            return renderResultTable(result.columns, result.rows);
+
+        }
+
+        const changed = database.getRowsModified();
+
+        let html = '<div class="msg-ok">✔ Done. ' + changed +
+            " row(s) changed.</div>";
+
+        if (verifySql) {
+
+            const after = runOn(database, verifySql);
+
+            html += "<p><strong>The table after your statement:</strong></p>" +
+                renderResultTable(after.columns, after.rows);
+
+        }
+
+        return html;
+
+    }
+
+    catch (error) {
+
+        return '<div class="msg-error">❌ ' +
+            escapeHTML(friendlyError(error.message)) + "</div>";
+
+    }
+
+}
+
+
+// =================================
+// CHECKING ANSWERS
+// =================================
+
+function evaluateAnswer(question, userSql) {
+
+    const userDb = createFreshDatabase();
+
+    const expectedDb = createFreshDatabase();
+
+    try {
+
+        let user;
+
+        try {
+
+            user = runOn(userDb, userSql);
+
+        }
+
+        catch (error) {
+
+            return {
+                ok: false,
+                message: "Your query has an error: " +
+                    friendlyError(error.message)
+            };
+
+        }
+
+        let expected = runOn(expectedDb, question.answer);
+
+        const verify = Boolean(question.verify);
+
+        if (verify) {
+
+            user = runOn(userDb, question.verify);
+
+            expected = runOn(expectedDb, question.verify);
+
+        }
+
+        else if (!user.hasTable) {
+
+            return {
+                ok: false,
+                message: "Your query did not return a table of results. " +
+                    "For this question, write a SELECT query."
+            };
+
+        }
+
+        // number of columns
+        if (!verify &&
+            user.columns.length > 0 &&
+            expected.columns.length > 0 &&
+            user.columns.length !== expected.columns.length) {
+
+            return {
+                ok: false,
+                message: "Your result has " + user.columns.length +
+                    " column(s) (" + user.columns.join(", ") +
+                    "), but the question needs " + expected.columns.length +
+                    " column(s). Read the question again and choose " +
+                    "the right columns."
+            };
+
+        }
+
+        // number of rows
+        if (user.rows.length !== expected.rows.length) {
+
+            if (verify) {
+
+                return {
+                    ok: false,
+                    message: "After your statement the table has " +
+                        user.rows.length + " row(s), but it should have " +
+                        expected.rows.length + " row(s). Check your " +
+                        "WHERE condition."
+                };
+
+            }
+
+            return {
+                ok: false,
+                message: "Your result has " + user.rows.length +
+                    " row(s), but the question needs " +
+                    expected.rows.length + " row(s). Check your " +
+                    "WHERE condition."
+            };
+
+        }
+
+        // values
+        let userText = user.rows.map(row => JSON.stringify(row));
+
+        let expectedText = expected.rows.map(row => JSON.stringify(row));
+
+        if (!question.ordered) {
+
+            userText.sort();
+
+            expectedText.sort();
+
+        }
+
+        const same = userText.every(
+            (value, index) => value === expectedText[index]
+        );
+
+        if (same) {
+
+            return { ok: true, message: "Correct! Well done." };
+
+        }
+
+        if (verify) {
+
+            return {
+                ok: false,
+                message: "The number of rows is right, but some values " +
+                    "in the table are different from what the question " +
+                    "asks. Read the question again."
+            };
+
+        }
+
+        if (question.ordered) {
+
+            return {
+                ok: false,
+                message: "The number of rows and columns is right, but " +
+                    "some values are different or the order is wrong. " +
+                    "Check your ORDER BY."
+            };
+
+        }
+
+        return {
+            ok: false,
+            message: "The number of rows and columns is right, but some " +
+                "values are different. Check your columns and conditions."
+        };
+
+    }
+
+    finally {
+
+        userDb.close();
+
+        expectedDb.close();
+
+    }
+
+}
+
+
+// =================================
+// PROGRESS
+// =================================
+
+function updateProgress() {
+
+    const total = allQuestions().length;
+
+    const done = allQuestions()
+        .filter(question => solved.has(question.id)).length;
+
+    const percent = total ? Math.round((done / total) * 100) : 0;
+
+    document.getElementById("progressText").textContent =
+        "Solved " + done + " of " + total +
+        " questions (" + percent + "%)";
+
+    document.getElementById("progressFill").style.width = percent + "%";
+
+    let level = "Beginner";
+
+    if (percent >= 100) level = "Interview Ready 🎉";
+
+    else if (percent >= 70) level = "Advanced";
+
+    else if (percent >= 30) level = "Intermediate";
+
+    document.getElementById("levelBadge").textContent = "Level: " + level;
+
+}
+
+
+// =================================
+// TOPIC BAR
+// =================================
+
+function renderTopicBar() {
+
+    topicBar.innerHTML = topics.map(topic => {
+
+        const active = topic.id === currentTopic ? " active" : "";
+
+        let count = "";
+
+        if (topic.questions) {
+
+            const done = topic.questions
+                .filter(question => solved.has(question.id)).length;
+
+            count = '<span class="chip-count">' + done + "/" +
+                topic.questions.length + "</span>";
+
+        }
+
+        return '<button type="button" class="chip' + active +
+            '" data-topic="' + escapeHTML(topic.id) + '">' +
+            escapeHTML(topic.name) + count + "</button>";
+
+    }).join("");
+
+}
+
+
+topicBar.addEventListener("click", function(event) {
+
+    const button = event.target.closest("button[data-topic]");
+
+    if (!button) return;
+
+    currentTopic = button.dataset.topic;
+
+    renderTopicBar();
+
+    renderTopic();
+
+});
+
+
+// =================================
+// TOPIC PAGES
+// =================================
+
+function renderTopic() {
+
+    const topic = findTopic(currentTopic);
+
+    if (topic.type === "playground") {
+
+        renderPlayground();
+
+    }
+
+    else if (topic.type === "cheat") {
+
+        renderCheatSheet();
+
+    }
+
+    else {
+
+        renderLessonTopic(topic);
+
+    }
+
+}
+
+
+function tablesLine(question) {
+
+    return question.tables.map(name =>
+        "<strong>" + escapeHTML(name) + "</strong> (" +
+        escapeHTML(TABLE_INFO[name]) + ")"
+    ).join("<br>");
+
+}
+
+
+function renderLessonTopic(topic) {
+
+    let html = '<div class="card lesson">' + topic.lesson;
+
+    if (topic.syntax) {
+
+        html += "<h3>Syntax</h3><pre>" +
+            escapeHTML(topic.syntax) + "</pre>";
+
+    }
+
+    // Try-it box
+    html += '<div class="try-box" data-box>' +
+        "<h3>Try it yourself</h3>";
+
+    if (topic.examples.length) {
+
+        html += "<p>Click an example, or write your own query:</p>";
+
+        html += topic.examples.map((example, index) =>
+            '<button type="button" class="btn-purple" ' +
+            'data-action="example" data-index="' + index + '">' +
+            escapeHTML(example.label) + "</button>"
+        ).join("");
+
+    }
+
+    html += '<textarea class="sql-input" spellcheck="false" ' +
+        'placeholder="Type a query, for example: SELECT * FROM users;">' +
+        "</textarea>" +
+        '<button type="button" class="btn-green" data-action="lesson-run" ' +
+        'data-run="1">▶ Run</button>' +
+        '<button type="button" class="btn-gray" ' +
+        'data-action="lesson-clear">Clear</button>' +
+        '<div class="output"></div>' +
+        "</div></div>";
+
+
+    // Questions
+    const doneCount = topic.questions
+        .filter(question => solved.has(question.id)).length;
+
+    html += '<div class="card"><h2>Practice Questions - ' +
+        escapeHTML(topic.name) + "</h2>";
+
+    html += '<p class="small-note">Write your answer in the box under ' +
+        "each question. <strong>Run</strong> shows your result. " +
+        "<strong>Check answer</strong> tells you if it is correct. " +
+        "Every Run starts from the original data.</p>";
+
+    if (doneCount === topic.questions.length) {
+
+        html += '<div class="badge-done">🏅 You solved all questions ' +
+            "in this topic!</div>";
+
+    }
+
+    html += topic.questions.map((question, index) => {
+
+        const isSolved = solved.has(question.id);
+
+        return `
+
+            <div class="question${isSolved ? " solved" : ""}"
+                data-qid="${escapeHTML(question.id)}" data-box>
+
+                <div class="q-head">
+                    <span>Question ${index + 1}</span>
+                    <span class="q-status">${isSolved ? "✔ Solved" : ""}</span>
+                </div>
+
+                <div class="q-text">${escapeHTML(question.q)}</div>
+
+                <div class="q-tables">
+                    Table: ${tablesLine(question)}
+                </div>
+
+                <button type="button" class="btn-light"
+                    data-action="tables">📋 Show table data</button>
+
+                <div class="q-tabledata" hidden></div>
+
+                <textarea class="sql-input" spellcheck="false"
+                    placeholder="Write your SQL here..."></textarea>
+
+                <button type="button" class="btn-green"
+                    data-action="run" data-run="1">▶ Run</button>
+
+                <button type="button" class="btn-purple"
+                    data-action="check">✓ Check answer</button>
+
+                <button type="button" class="btn-light"
+                    data-action="hint">💡 Hint</button>
+
+                <button type="button" class="btn-gray"
+                    data-action="answer">👁 Show answer</button>
+
+                <button type="button" class="btn-light"
+                    data-action="clear">Clear</button>
+
+                <div class="q-hint" hidden></div>
+                <div class="output"></div>
+                <div class="q-feedback"></div>
+                <div class="q-answer" hidden></div>
+
+            </div>
+
+        `;
+
+    }).join("");
+
+    html += "</div>";
+
+    topicContent.innerHTML = html;
+
+}
+
+
+function renderPlayground() {
+
+    topicContent.innerHTML = `
+
+        <div class="card">
+
+            <h2>✍️ Playground</h2>
+
+            <p>
+                Practice freely here. Your changes (INSERT, UPDATE, DELETE)
+                stay until you click <strong>Reset Database</strong>.
+                Press <strong>Ctrl + Enter</strong> to run.
+            </p>
+
+            <div data-box>
+
+                <textarea class="sql-input" id="playInput"
+                    spellcheck="false"
+                    placeholder="Example: SELECT * FROM users;"></textarea>
+
+                <button type="button" class="btn-green"
+                    data-action="play-run" data-run="1">▶ Run</button>
+
+                <button type="button" class="btn-gray"
+                    data-action="play-clear">Clear</button>
+
+                <button type="button" class="btn-red"
+                    data-action="play-reset">↺ Reset Database</button>
+
+                <div class="output"></div>
+
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <h2>📋 Practice Tables</h2>
+
+            <div id="playTabs"></div>
+
+            <p class="small-note" id="playNote"></p>
+
+            <div id="playTable"></div>
+
+        </div>
+
+    `;
+
+    renderPlayTables();
+
+}
+
+
+function renderPlayTables() {
+
+    const tabs = document.getElementById("playTabs");
+
+    if (!tabs) return;
+
+    tabs.innerHTML = Object.keys(TABLE_INFO).map(name =>
+        '<button type="button" class="chip' +
+        (name === currentPlayTable ? " active" : "") +
+        '" data-action="play-table" data-table="' +
+        escapeHTML(name) + '">' + escapeHTML(name) + "</button>"
+    ).join("");
+
+    document.getElementById("playNote").textContent =
+        "Columns: " + TABLE_INFO[currentPlayTable];
+
+    const view = document.getElementById("playTable");
+
+    if (!playDb) {
+
+        view.innerHTML = "";
+
+        return;
+
+    }
+
+    try {
+
+        view.innerHTML = showTableByName(playDb, currentPlayTable);
+
+    }
+
+    catch (error) {
+
+        view.innerHTML = '<div class="msg-error">This table was not ' +
+            "found. Click Reset Database to bring it back.</div>";
+
+    }
+
+}
+
+
+function renderCheatSheet() {
+
+    const commands = [
+
+        ["SELECT", "Choose columns to show", "SELECT name, email FROM users;"],
+        ["WHERE", "Filter rows", "SELECT * FROM bugs WHERE priority = 'High';"],
+        ["AND / OR", "Use more than one condition", "WHERE module = 'Login' AND status = 'Open'"],
+        ["IN", "Match any value in a list", "WHERE role IN ('Tester', 'Admin')"],
+        ["LIKE", "Search for text", "WHERE title LIKE '%email%'"],
+        ["IS NULL", "Find empty values", "WHERE assigned_to IS NULL"],
+        ["DISTINCT", "Remove repeated values", "SELECT DISTINCT module FROM bugs;"],
+        ["ORDER BY", "Sort the result", "ORDER BY id DESC"],
+        ["LIMIT", "Show only the first rows", "LIMIT 3"],
+        ["COUNT / MIN / MAX", "Count or find smallest and biggest", "SELECT COUNT(*) FROM bugs;"],
+        ["GROUP BY", "Make groups to count", "SELECT status, COUNT(*) FROM bugs GROUP BY status;"],
+        ["HAVING", "Filter groups", "HAVING COUNT(*) > 1"],
+        ["INSERT", "Add a row", "INSERT INTO users (id, name) VALUES (6, 'Ravi');"],
+        ["UPDATE", "Change rows", "UPDATE bugs SET status = 'Closed' WHERE id = 1;"],
+        ["DELETE", "Remove rows", "DELETE FROM bugs WHERE id = 6;"],
+        ["JOIN", "Combine two tables", "FROM bugs JOIN users ON bugs.reported_by = users.id"],
+        ["LEFT JOIN", "Keep all rows from the first table", "FROM bugs LEFT JOIN users ON bugs.assigned_to = users.id"]
+
+    ];
+
+    const questions = [
+
+        [
+            "What is SQL and why do testers use it?",
+            "SQL is the language used to read and change data in a database. Testers use it to check that the data saved by the application is correct, to find duplicate or missing data, and to prepare or clean test data."
+        ],
+        [
+            "What is the difference between WHERE and HAVING?",
+            "WHERE filters rows before they are grouped. HAVING filters groups after GROUP BY, for example groups with a count above 1."
+        ],
+        [
+            "What is the difference between DELETE, TRUNCATE and DROP?",
+            "DELETE removes selected rows (you can use WHERE). TRUNCATE removes all rows but keeps the table. DROP removes the whole table, including its structure."
+        ],
+        [
+            "What is the difference between INNER JOIN and LEFT JOIN?",
+            "INNER JOIN returns only rows that match in both tables. LEFT JOIN returns all rows from the left table, and shows NULL when there is no match on the right."
+        ],
+        [
+            "What is a primary key and a foreign key?",
+            "A primary key uniquely identifies each row in a table, like the id column. A foreign key is a column that points to the primary key of another table, like bugs.reported_by pointing to users.id."
+        ],
+        [
+            "What is NULL?",
+            "NULL means there is no value. It is not zero and not an empty text. Use IS NULL or IS NOT NULL to check it, because = NULL does not work."
+        ],
+        [
+            "How do you find duplicate records?",
+            "Group by the column that should be unique, count each group, and use HAVING COUNT(*) > 1. For example: SELECT email, COUNT(*) FROM signups GROUP BY email HAVING COUNT(*) > 1;"
+        ],
+        [
+            "Give an example of using SQL in your testing.",
+            "After registering a new user on the website, I check the users table to confirm that exactly one row was saved with the correct email and role, and that no duplicate email was created."
+        ]
+
+    ];
+
+    topicContent.innerHTML = `
+
+        <div class="card">
+
+            <h2>SQL Cheat Sheet</h2>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr><th>Command</th><th>What it does</th><th>Example</th></tr>
+                    </thead>
+                    <tbody>
+                        ${commands.map(row => `
+                            <tr>
+                                <td><strong>${escapeHTML(row[0])}</strong></td>
+                                <td>${escapeHTML(row[1])}</td>
+                                <td><code>${escapeHTML(row[2])}</code></td>
+                            </tr>
+                        `).join("")}
+                    </tbody>
+                </table>
+            </div>
+
+        </div>
+
+        <div class="card">
+
+            <h2>Common Interview Questions</h2>
+
+            <p class="small-note">Click a question to see a short answer.</p>
+
+            ${questions.map(item => `
+                <details>
+                    <summary>${escapeHTML(item[0])}</summary>
+                    <p>${escapeHTML(item[1])}</p>
+                </details>
+            `).join("")}
+
+        </div>
+
+    `;
+
+}
+
+
+// =================================
+// BUTTON ACTIONS
+// =================================
+
+function engineReady(outputBox) {
+
+    if (SQL) return true;
+
+    outputBox.innerHTML =
+        '<div class="msg-error">The SQL engine is not ready yet. ' +
+        "Please wait or refresh the page.</div>";
+
+    return false;
+
+}
+
+
+topicContent.addEventListener("click", function(event) {
+
+    const button = event.target.closest("button[data-action]");
+
+    if (!button) return;
+
+    const action = button.dataset.action;
+
+    const box = button.closest("[data-box]");
+
+    const input = box ? box.querySelector("textarea") : null;
+
+    const output = box ? box.querySelector(".output") : null;
+
+
+    // ----- lesson try box -----
+
+    if (action === "example") {
+
+        const topic = findTopic(currentTopic);
+
+        input.value = topic.examples[Number(button.dataset.index)].sql;
+
+        if (engineReady(output)) {
+
+            output.innerHTML = runAndRender(
+                createFreshDatabase(), input.value, null
+            );
+
+        }
+
+        return;
+
+    }
+
+    if (action === "lesson-run") {
+
+        if (!input.value.trim()) {
+
+            output.innerHTML =
+                '<div class="msg-info">Please type a query first.</div>';
+
+            return;
+
+        }
+
+        if (engineReady(output)) {
+
+            output.innerHTML = runAndRender(
+                createFreshDatabase(), input.value, null
+            );
+
+        }
+
+        return;
+
+    }
+
+    if (action === "lesson-clear") {
+
+        input.value = "";
+
+        output.innerHTML = "";
+
+        return;
+
+    }
+
+
+    // ----- playground -----
+
+    if (action === "play-run") {
+
+        if (!input.value.trim()) {
+
+            output.innerHTML =
+                '<div class="msg-info">Please type a query first.</div>';
+
+            return;
+
+        }
+
+        if (engineReady(output)) {
+
+            output.innerHTML = runAndRender(playDb, input.value, null);
+
+            renderPlayTables();
+
+        }
+
+        return;
+
+    }
+
+    if (action === "play-clear") {
+
+        input.value = "";
+
+        output.innerHTML = "";
+
+        return;
+
+    }
+
+    if (action === "play-reset") {
+
+        if (!engineReady(output)) return;
+
+        if (playDb) playDb.close();
+
+        playDb = createFreshDatabase();
+
+        output.innerHTML = '<div class="msg-ok">✔ Database reset. ' +
+            "The tables are back to the original data.</div>";
+
+        renderPlayTables();
+
+        return;
+
+    }
+
+    if (action === "play-table") {
+
+        currentPlayTable = button.dataset.table;
+
+        renderPlayTables();
+
+        return;
+
+    }
+
+
+    // ----- question cards -----
+
+    const card = button.closest(".question");
+
+    if (!card) return;
+
+    const question = findQuestion(card.dataset.qid);
+
+    const hintBox = card.querySelector(".q-hint");
+
+    const feedback = card.querySelector(".q-feedback");
+
+    const answerBox = card.querySelector(".q-answer");
+
+    const dataBox = card.querySelector(".q-tabledata");
+
+
+    if (action === "tables") {
+
+        if (!dataBox.hidden) {
+
+            dataBox.hidden = true;
+
+            return;
+
+        }
+
+        if (!viewDb) {
+
+            dataBox.innerHTML =
+                '<div class="msg-error">The SQL engine is not ready yet.</div>';
+
+        }
+
+        else {
+
+            dataBox.innerHTML = question.tables.map(name =>
+                "<p><strong>" + escapeHTML(name) + "</strong></p>" +
+                showTableByName(viewDb, name)
+            ).join("");
+
+        }
+
+        dataBox.hidden = false;
+
+        return;
+
+    }
+
+    if (action === "hint") {
+
+        hintBox.textContent = "💡 " + question.hint;
+
+        hintBox.hidden = !hintBox.hidden;
+
+        return;
+
+    }
+
+    if (action === "answer") {
+
+        if (!answerBox.hidden) {
+
+            answerBox.hidden = true;
+
+            return;
+
+        }
+
+        let html = "<pre>" + escapeHTML(question.answer) + "</pre>" +
+            '<button type="button" class="btn-purple" ' +
+            'data-action="use">Copy into my box</button>';
+
+        if (question.explain) {
+
+            html += '<div class="q-explain"><strong>🎤 How to say it ' +
+                "in an interview:</strong><br>" +
+                escapeHTML(question.explain) + "</div>";
+
+        }
+
+        answerBox.innerHTML = html;
+
+        answerBox.hidden = false;
+
+        return;
+
+    }
+
+    if (action === "use") {
+
+        input.value = question.answer;
+
+        return;
+
+    }
+
+    if (action === "clear") {
+
+        input.value = "";
+
+        output.innerHTML = "";
+
+        feedback.innerHTML = "";
+
+        return;
+
+    }
+
+    if (action === "run") {
+
+        if (!input.value.trim()) {
+
+            output.innerHTML =
+                '<div class="msg-info">Please type your query first.</div>';
+
+            return;
+
+        }
+
+        if (engineReady(output)) {
+
+            output.innerHTML = runAndRender(
+                createFreshDatabase(),
+                input.value,
+                question.verify || null
+            );
+
+        }
+
+        return;
+
+    }
+
+    if (action === "check") {
+
+        if (!engineReady(feedback)) return;
+
+        if (!input.value.trim()) {
+
+            feedback.innerHTML = '<div class="msg-info">Type your query ' +
+                "in the box first.</div>";
+
+            return;
+
+        }
+
+        const result = evaluateAnswer(question, input.value.trim());
+
+        if (result.ok) {
+
+            let html = '<div class="msg-ok">✔ ' +
+                escapeHTML(result.message) + "</div>";
+
+            if (question.explain) {
+
+                html += '<div class="q-explain"><strong>🎤 How to say it ' +
+                    "in an interview:</strong><br>" +
+                    escapeHTML(question.explain) + "</div>";
+
+            }
+
+            feedback.innerHTML = html;
+
+            solved.add(question.id);
+
+            saveSolved();
+
+            card.classList.add("solved");
+
+            card.querySelector(".q-status").textContent = "✔ Solved";
+
+            renderTopicBar();
+
+            updateProgress();
+
+        }
+
+        else {
+
+            feedback.innerHTML = '<div class="msg-error">✖ ' +
+                escapeHTML(result.message) + "</div>";
+
+        }
+
+    }
+
+});
+
+
+// Ctrl + Enter runs the query in the box you are typing in
+topicContent.addEventListener("keydown", function(event) {
+
+    if (!(event.ctrlKey && event.key === "Enter")) return;
+
+    if (event.target.tagName !== "TEXTAREA") return;
+
+    const box = event.target.closest("[data-box]");
+
+    if (!box) return;
+
+    const runButton = box.querySelector("button[data-run]");
+
+    if (runButton) {
+
+        event.preventDefault();
+
+        runButton.click();
+
+    }
+
+});
+
+
+// Reset progress
+document.getElementById("resetProgressButton")
+    .addEventListener("click", function() {
+
+        if (!confirm("Reset all your solved questions?")) return;
+
+        solved = new Set();
+
+        saveSolved();
+
+        updateProgress();
+
+        renderTopicBar();
+
+        renderTopic();
+
+    });
+
+
+// =================================
+// START THE PAGE
+// =================================
+
+async function startPage() {
+
+    renderTopicBar();
+
+    renderTopic();
+
+    updateProgress();
+
+    if (typeof initSqlJs !== "function") {
+
+        engineStatus.className = "msg-error";
+
+        engineStatus.textContent =
+            "The SQL engine could not be loaded. " +
+            "Please check your internet connection and refresh the page.";
+
+        return;
+
+    }
+
+    try {
+
+        SQL = await initSqlJs({
+
+            locateFile: file => SQL_CDN + file
+
+        });
+
+        viewDb = createFreshDatabase();
+
+        playDb = createFreshDatabase();
+
+        engineStatus.className = "msg-ok";
+
+        engineStatus.textContent =
+            "✔ SQL engine is ready. Choose a topic and start practicing!";
+
+        if (findTopic(currentTopic).type === "playground") {
+
+            renderPlayTables();
+
+        }
+
+    }
+
+    catch (error) {
+
+        console.error("SQL engine error:", error);
+
+        engineStatus.className = "msg-error";
+
+        engineStatus.textContent =
+            "The SQL engine could not start: " + error.message;
+
+    }
+
+}
+
+
+startPage();
+
+</script>
+
+</body>
+
+</html>

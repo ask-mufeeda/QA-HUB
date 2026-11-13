@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generator Test</title>
+</head>
+<body>
+
+    <h2>Supabase Generator Test</h2>
+
+    <input id="module" placeholder="Module name">
+    <br><br>
+
+    <textarea id="requirement"
+        placeholder="Enter requirement"></textarea>
+    <br><br>
+
+    <button id="testBtn">Test Generate</button>
+
+    <pre id="result"></pre>
+
+    <script type="module">
+        import { supabase } from "./js/supabase.js";
+
+        document.getElementById("testBtn").onclick = async () => {
+
+            const result = document.getElementById("result");
+
+            result.textContent = "Testing...";
+
+            try {
+                const { data, error } = await supabase.functions.invoke(
+                    "smart-handler",
+                    {
+                        body: {
+                            module: document.getElementById("module").value,
+                            prompt: document.getElementById("requirement").value,
+                            count: 20
+                        }
+                    }
+                );
+
+                if (error) throw error;
+
+                result.textContent = JSON.stringify(data, null, 2);
+
+            } catch (error) {
+                result.textContent = error.message;
+            }
+        };
+    </script>
+
+</body>
+</html>
