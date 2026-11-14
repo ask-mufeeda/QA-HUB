@@ -145,34 +145,41 @@ set search_path = ''
 as $$
 declare
   totals record;
+  target_run_id uuid;
 begin
-  if tg.op = 'INSERT' or tg.op = 'UPDATE' then
-    select
-      count(*) as total,
-      count(*) filter (where status = 'passed') as passed,
-      count(*) filter (where status = 'failed') as failed,
-      count(*) filter (where status = 'skipped') as skipped
-      into totals
-    from public.automation_results
-    where run_id = new.run_id;
-
-    update public.automation_runs
-    set
-      total = coalesce(totals.total, 0),
-      passed = coalesce(totals.passed, 0),
-      failed = coalesce(totals.failed, 0),
-      skipped = coalesce(totals.skipped, 0),
-      status = case
-        when exists (select 1 from public.automation_results where run_id = public.automation_runs.id and status = 'failed') then 'failed'
-        when exists (select 1 from public.automation_results where run_id = public.automation_runs.id and status = 'passed') then 'passed'
-        else 'running'
-      end,
-      finished_at = case
-        when coalesce(totals.total, 0) > 0 then now()
-        else public.automation_runs.finished_at
-      end
-    where id = new.run_id;
+  if TG_OP = 'DELETE' then
+    target_run_id := old.run_id;
+  elsif TG_OP = 'INSERT' or TG_OP = 'UPDATE' then
+    target_run_id := new.run_id;
+  else
+    return coalesce(new, old);
   end if;
+
+  select
+    count(*) as total,
+    count(*) filter (where status = 'passed') as passed,
+    count(*) filter (where status = 'failed') as failed,
+    count(*) filter (where status = 'skipped') as skipped
+    into totals
+  from public.automation_results
+  where run_id = target_run_id;
+
+  update public.automation_runs
+  set
+    total = coalesce(totals.total, 0),
+    passed = coalesce(totals.passed, 0),
+    failed = coalesce(totals.failed, 0),
+    skipped = coalesce(totals.skipped, 0),
+    status = case
+      when exists (select 1 from public.automation_results where run_id = public.automation_runs.id and status = 'failed') then 'failed'
+      when exists (select 1 from public.automation_results where run_id = public.automation_runs.id and status = 'passed') then 'passed'
+      else 'running'
+    end,
+    finished_at = case
+      when coalesce(totals.total, 0) > 0 then now()
+      else public.automation_runs.finished_at
+    end
+  where id = target_run_id;
 
   return coalesce(new, old);
 end;
@@ -180,15 +187,13 @@ $$;
 
 do $$
 begin
-  if not exists (
-    select 1 from pg_trigger where tgname = 'automation_results_totals_trigger'
-  ) then
-    create trigger automation_results_totals_trigger
-      after insert or update of status or delete
-      on public.automation_results
-      for each row
-      execute function public.set_automation_run_totals();
-  end if;
+  drop trigger if exists automation_results_totals_trigger on public.automation_results;
+
+  create trigger automation_results_totals_trigger
+    after insert or update of status or delete
+    on public.automation_results
+    for each row
+    execute function public.set_automation_run_totals();
 end $$;
 
 create or replace function public.seed_automation_runs()
@@ -276,7 +281,7 @@ as $$
 declare
   target_project_id uuid;
 begin
-  if tg_op = 'UPDATE'
+  if TG_OP = 'UPDATE'
     and (
       new.owner_id is distinct from old.owner_id
       or new.project_id is distinct from old.project_id
@@ -340,7 +345,7 @@ declare
   execution_suite_id uuid;
   result_suite_id uuid;
 begin
-  if tg_op = 'UPDATE'
+  if TG_OP = 'UPDATE'
     and (
       new.owner_id is distinct from old.owner_id
       or new.execution_id is distinct from old.execution_id
@@ -413,7 +418,7 @@ declare
   target_execution_id uuid;
   target_owner_id uuid;
 begin
-  if tg_op = 'DELETE' then
+  if TG_OP = 'DELETE' then
     target_execution_id := old.execution_id;
     target_owner_id := old.owner_id;
   else

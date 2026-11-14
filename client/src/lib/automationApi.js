@@ -21,6 +21,96 @@ export function calculateSuccessRate(passed = 0, failed = 0) {
   return Math.round((Number(passed ?? 0) / completed) * 100);
 }
 
+function normalizePlaywrightStatus(value) {
+  const status = String(value ?? "").trim().toLowerCase();
+  if (["passed", "pass", "expected", "succeeded\n", "succeeded"].includes(status)) {
+    return "passed";
+  }
+  if (["failed", "fail", "timedout", "timed_out", "interrupted"].includes(status)) {
+    return "failed";
+  }
+  if (["skipped", "skip", "pending", "disabled"].includes(status)) {
+    return "skipped";
+  }
+  return status || "failed";
+}
+
+function getErrorMessage(errorLike) {
+  if (!errorLike) return null;
+  if (typeof errorLike === "string") {
+    return errorLike.split(/\r?\n/)[0].trim() || null;
+  }
+  if (typeof errorLike === "object") {
+    const errorMessage =
+      typeof errorLike.message === "string"
+        ? errorLike.message
+        : typeof errorLike.value === "string"
+          ? errorLike.value
+          : JSON.stringify(errorLike);
+    return String(errorMessage).split(/\r?\n/)[0].trim() || null;
+  }
+  return null;
+}
+
+export function parsePlaywrightJsonReport(report) {
+  if (!report || typeof report !== "object") {
+    throw new Error("The Playwright report must be a JSON object.");
+  }
+
+  const suites = Array.isArray(report.suites) ? report.suites : [];
+  const parsedResults = [];
+
+  function walkSuite(suite, ancestors = []) {
+    const suitePath = [...ancestors, suite?.title].filter(Boolean);
+    const specGroups = Array.isArray(suite?.specs) ? suite.specs : [];
+
+    for (const spec of specGroups) {
+      const specPath = [...suitePath, spec?.title].filter(Boolean);
+      const tests = Array.isArray(spec?.tests) ? spec.tests : [];
+
+      for (const test of tests) {
+        const results = Array.isArray(test?.results) ? test.results : [];
+        const lastResult = results.at(-1) ?? null;
+        const status = normalizePlaywrightStatus(
+          lastResult?.status ?? test?.status ?? test?.outcome ?? "failed",
+        );
+        const testTitle = [...specPath, test?.title].filter(Boolean).join(" > ");
+        const file =
+          spec?.file ||
+          suite?.file ||
+          test?.location?.file ||
+          lastResult?.attachments?.[0]?.path ||
+          "";
+
+        parsedResults.push({
+          test_name: testTitle || test?.title || "Unnamed test",
+          file: file || null,
+          status,
+          duration_ms: Math.round(Number(lastResult?.duration ?? test?.duration ?? 0) || 0),
+          error_message: getErrorMessage(lastResult?.error ?? test?.error ?? null),
+        });
+      }
+    }
+
+    const childSuites = Array.isArray(suite?.suites) ? suite.suites : [];
+    for (const childSuite of childSuites) {
+      walkSuite(childSuite, suitePath);
+    }
+  }
+
+  for (const suite of suites) {
+    walkSuite(suite, []);
+  }
+
+  if (parsedResults.length === 0) {
+    throw new Error(
+      "No Playwright tests were found in that JSON. Use `npx playwright test --reporter=json > report.json` and make sure the file includes suites and tests.",
+    );
+  }
+
+  return parsedResults;
+}
+
 export function validateAutomationRunPayload(payload) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("Automation run payload must be a JSON object.");
