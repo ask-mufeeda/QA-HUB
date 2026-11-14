@@ -1,53 +1,13 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Generator Test</title>
-</head>
-<body>
-
-    <h2>Supabase Generator Test</h2>
-
-    <input id="module" placeholder="Module name">
-    <br><br>
-
-    <textarea id="requirement"
-        placeholder="Enter requirement"></textarea>
-    <br><br>
-
-    <button id="testBtn">Test Generate</button>
-
-    <pre id="result"></pre>
-
-    <script type="module">
-        import { supabase } from "./js/supabase.js";
-
-        document.getElementById("testBtn").onclick = async () => {
-
-            const result = document.getElementById("result");
-
-            result.textContent = "Testing...";
-
-            try {
-                const { data, error } = await supabase.functions.invoke(
-                    "smart-handler",
-                    {
-                        body: {
-                            module: document.getElementById("module").value,
-                            prompt: document.getElementById("requirement").value,
-                            count: 20
-                        }
-                    }
-                );
-
-                if (error) throw error;
-
-                result.textContent = JSON.stringify(data, null, 2);
-
-            } catch (error) {
-                result.textContent = error.message;
-            }
-        };
-    </script>
-
-</body>
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="refresh" content="0;url=client/test-generator-check" />
+    <title>Test Generator | QA Hub</title>
+  </head>
+  <body>
+    <p>Opening the test generator... <a href="client/test-generator-check">Continue</a></p>
+    <script>window.location.replace("client/test-generator-check");</script>
+  </body>
 </html>
