@@ -7,11 +7,11 @@ const navigation = [
   { to: "/dashboard", label: "Dashboard" },
   { to: "/manual-testing", label: "Test cases" },
   { to: "/automation-testing", label: "Automation testing" },
+  { to: "/test-management", label: "Test management" },
   { to: "/bugs", label: "Bug tracker" },
   { to: "/api-testing", label: "API testing" },
   { to: "/sql-practice", label: "SQL practice" },
   { to: "/resources", label: "Resources" },
-  { to: "/test-generator-check", label: "Test generator" },
   { to: "/admin", label: "Admin", roles: ["admin"] },
   {
     to: "/developer-dashboard",
@@ -54,7 +54,7 @@ export default function AppShell() {
             QA<span className="-ml-2 text-indigo-600">Hub</span>
           </Link>
 
-          <div className="flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-3">
             <div className="hidden text-right sm:block">
               <p className="max-w-52 truncate text-sm font-medium text-slate-800">
                 {user?.email}
@@ -72,7 +72,7 @@ export default function AppShell() {
 
           <nav
             aria-label="Workspace"
-            className="order-3 flex w-full gap-1 overflow-x-auto pb-1 text-sm lg:order-2 lg:w-auto lg:flex-1 lg:justify-center"
+            className="order-3 flex w-full flex-wrap justify-center gap-1 pb-1 text-sm lg:order-2 lg:w-auto lg:flex-1"
           >
             {visibleNavigation.map((item) => (
               <Link

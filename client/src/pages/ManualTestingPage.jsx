@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import Feedback from "../components/Feedback.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -23,14 +24,28 @@ function toStepsText(steps) {
   return String(steps ?? "");
 }
 
+function formatTestCaseRef(testCaseId) {
+  if (!testCaseId) return "—";
+  const value = String(testCaseId).slice(-6);
+  return `TC-${value}`;
+}
+
 export default function ManualTestingPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [cases, setCases] = useState([]);
+  const [bugs, setBugs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyCase);
   const [editingId, setEditingId] = useState(null);
   const [filterModule, setFilterModule] = useState("All modules");
+  const [statusFilter, setStatusFilter] = useState("All statuses");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortField, setSortField] = useState("id");
+  const [sortDirection, setSortDirection] = useState("asc");
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkStatus, setBulkStatus] = useState("Not Run");
   const [feedback, setFeedback] = useState(null);
   const [revision, setRevision] = useState(0);
   const [aiModule, setAiModule] = useState("");
@@ -44,18 +59,26 @@ export default function ManualTestingPage() {
 
     async function loadCases() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from("test_cases")
-        .select("*")
-        .eq("created_by", user.id)
-        .order("created_at", { ascending: false });
+      const [casesResult, bugsResult] = await Promise.all([
+        supabase
+          .from("test_cases")
+          .select("*")
+          .eq("created_by", user.id)
+          .order("id", { ascending: true }),
+        supabase.from("bugs").select("id, test_case_id"),
+      ]);
 
       if (!active) return;
-      if (error) {
-        console.error("Could not load test cases:", error);
-        setFeedback({ type: "error", text: error.message });
+      if (casesResult.error) {
+        console.error("Could not load test cases:", casesResult.error);
+        setFeedback({ type: "error", text: casesResult.error.message });
       } else {
-        setCases(data ?? []);
+        setCases(casesResult.data ?? []);
+      }
+      if (bugsResult.error) {
+        console.error("Could not load linked bugs:", bugsResult.error);
+      } else {
+        setBugs(bugsResult.data ?? []);
       }
       setLoading(false);
     }
@@ -66,14 +89,53 @@ export default function ManualTestingPage() {
     };
   }, [user.id, revision]);
 
+  const linkedBugsByCaseId = useMemo(
+    () =>
+      bugs.reduce((result, bug) => {
+        if (bug.test_case_id) {
+          result.set(bug.test_case_id, bug);
+        }
+        return result;
+      }, new Map()),
+    [bugs],
+  );
+
   const modules = useMemo(
     () => [...new Set(cases.map((testCase) => testCase.module).filter(Boolean))].sort(),
     [cases],
   );
-  const visibleCases =
-    filterModule === "All modules"
-      ? cases
-      : cases.filter((testCase) => testCase.module === filterModule);
+  const visibleCases = useMemo(() => {
+    const normalizedValue = searchTerm.trim().toLowerCase();
+    const filtered = cases.filter((testCase) => {
+      const matchesModule =
+        filterModule === "All modules" || testCase.module === filterModule;
+      const matchesStatus =
+        statusFilter === "All statuses" || (testCase.status ?? "Not Run") === statusFilter;
+      const haystack = [testCase.title, testCase.module, testCase.steps, testCase.expected_result]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      const matchesSearch = !normalizedValue || haystack.includes(normalizedValue);
+      return matchesModule && matchesStatus && matchesSearch;
+    });
+
+    const sorted = [...filtered].sort((left, right) => {
+      const leftValue = left[sortField] ?? "";
+      const rightValue = right[sortField] ?? "";
+      const a = typeof leftValue === "string" ? leftValue.toLowerCase() : leftValue;
+      const b = typeof rightValue === "string" ? rightValue.toLowerCase() : rightValue;
+
+      if (typeof a === "number" && typeof b === "number") {
+        return sortDirection === "asc" ? a - b : b - a;
+      }
+
+      if (a < b) return sortDirection === "asc" ? -1 : 1;
+      if (a > b) return sortDirection === "asc" ? 1 : -1;
+      return 0;
+    });
+
+    return sorted;
+  }, [cases, filterModule, searchTerm, sortDirection, sortField, statusFilter]);
   const passCount = cases.filter((testCase) => testCase.status === "Pass").length;
   const failCount = cases.filter((testCase) => testCase.status === "Fail").length;
   const notRunCount = cases.filter((testCase) => testCase.status === "Not Run").length;
@@ -88,6 +150,56 @@ export default function ManualTestingPage() {
   function resetForm() {
     setForm(emptyCase);
     setEditingId(null);
+  }
+
+  function toggleSelectedCase(testCaseId) {
+    setSelectedIds((current) =>
+      current.includes(testCaseId)
+        ? current.filter((id) => id !== testCaseId)
+        : [...current, testCaseId],
+    );
+  }
+
+  function toggleAllVisibleCases() {
+    const allVisibleIds = visibleCases.map((testCase) => testCase.id);
+    setSelectedIds((current) =>
+      allVisibleIds.every((id) => current.includes(id))
+        ? current.filter((id) => !allVisibleIds.includes(id))
+        : [...new Set([...current, ...allVisibleIds])],
+    );
+  }
+
+  async function bulkUpdateStatus() {
+    if (!selectedIds.length) return;
+    const { error } = await supabase
+      .from("test_cases")
+      .update({ status: bulkStatus })
+      .in("id", selectedIds)
+      .eq("created_by", user.id);
+
+    if (error) {
+      console.error("Could not bulk update test cases:", error);
+      setFeedback({ type: "error", text: error.message });
+      return;
+    }
+
+    setCases((current) =>
+      current.map((testCase) =>
+        selectedIds.includes(testCase.id) ? { ...testCase, status: bulkStatus } : testCase,
+      ),
+    );
+    setSelectedIds([]);
+    setFeedback({ type: "success", text: `Updated ${selectedIds.length} test cases.` });
+  }
+
+  function handleSort(field) {
+    setSortDirection((current) => {
+      if (sortField === field) {
+        return current === "asc" ? "desc" : "asc";
+      }
+      return "asc";
+    });
+    setSortField(field);
   }
 
   async function handleSubmit(event) {
@@ -146,6 +258,27 @@ export default function ManualTestingPage() {
     setCases((current) =>
       current.map((item) => (item.id === testCase.id ? { ...item, status } : item)),
     );
+  }
+
+  function openCreateBugForCase(testCase) {
+    const caseId = formatTestCaseRef(testCase.test_case_id ?? testCase.id);
+    const title = `[${caseId}] ${testCase.title || "Test case"} failed`;
+    const description = [
+      `Steps:\n${testCase.steps || "No steps were recorded."}`,
+      `Expected result:\n${testCase.expected_result || "No expected result was recorded."}`,
+      `Actual result:\n${testCase.actual_result || "No actual result was recorded."}`,
+    ].join("\n\n");
+
+    navigate("/bugs", {
+      state: {
+        bugPrefill: {
+          title,
+          description,
+          severity: "Medium",
+          test_case_id: testCase.id,
+        },
+      },
+    });
   }
 
   function beginEdit(testCase) {
@@ -462,8 +595,14 @@ export default function ManualTestingPage() {
               <h2 className="font-semibold text-slate-900">Your test cases</h2>
               <p className="mt-1 text-xs text-slate-500">{visibleCases.length} shown</p>
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              Module
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="search"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                placeholder="Search cases"
+                className="w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+              />
               <select
                 value={filterModule}
                 onChange={(event) => setFilterModule(event.target.value)}
@@ -474,63 +613,156 @@ export default function ManualTestingPage() {
                   <option key={module}>{module}</option>
                 ))}
               </select>
-            </label>
+              <select
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value)}
+                className="max-w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+              >
+                <option>All statuses</option>
+                {statuses.map((status) => (
+                  <option key={status}>{status}</option>
+                ))}
+              </select>
+            </div>
           </div>
+          {selectedIds.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 bg-slate-50 p-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                {selectedIds.length} selected
+              </span>
+              <select
+                value={bulkStatus}
+                onChange={(event) => setBulkStatus(event.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-sm"
+              >
+                {statuses.map((status) => (
+                  <option key={status}>{status}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={bulkUpdateStatus}
+                className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700"
+              >
+                Update selected
+              </button>
+            </div>
+          )}
           {loading ? (
             <p className="p-6 text-sm text-slate-500">Loading test cases...</p>
           ) : visibleCases.length === 0 ? (
             <p className="p-6 text-sm text-slate-500">No test cases found for this filter.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="min-w-[900px] w-full text-left text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <table className="w-full table-auto text-left text-sm">
+                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                   <tr>
-                    {["ID", "Title / Module", "Steps", "Expected", "Status", "Actions"].map((item) => (
-                      <th key={item} className="px-4 py-3 font-semibold">{item}</th>
+                    <th className="px-3 py-3 font-semibold">
+                      <input
+                        type="checkbox"
+                        checked={
+                          visibleCases.length > 0 &&
+                          visibleCases.every((testCase) => selectedIds.includes(testCase.id))
+                        }
+                        onChange={toggleAllVisibleCases}
+                        aria-label="Select all visible test cases"
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                    </th>
+                    {[
+                      { label: "ID", field: "id" },
+                      { label: "Title / Module", field: "title" },
+                      { label: "Steps", field: "steps" },
+                      { label: "Expected", field: "expected_result" },
+                      { label: "Status", field: "status" },
+                      { label: "Actions", field: "actions" },
+                    ].map(({ label, field }) => (
+                      <th
+                        key={label}
+                        className="px-3 py-3 font-semibold"
+                        style={field !== "actions" ? { cursor: "pointer" } : undefined}
+                        onClick={field !== "actions" ? () => handleSort(field) : undefined}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {label}
+                          {field !== "actions" && sortField === field && (
+                            <span>{sortDirection === "asc" ? "↑" : "↓"}</span>
+                          )}
+                        </span>
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {visibleCases.map((testCase) => (
                     <tr key={testCase.id} className="align-top">
-                      <td className="whitespace-nowrap px-4 py-4 text-xs text-slate-500">
+                      <td className="px-3 py-4">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(testCase.id)}
+                          onChange={() => toggleSelectedCase(testCase.id)}
+                          aria-label={`Select ${testCase.title}`}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-4 text-[11px] text-slate-500">
                         {testCase.test_case_id ?? testCase.id}
                       </td>
-                      <td className="max-w-56 px-4 py-4">
-                        <p className="font-medium text-slate-900">{testCase.title}</p>
-                        <p className="mt-1 text-xs text-slate-500">{testCase.module}</p>
+                      <td className="max-w-[15rem] px-3 py-4">
+                        <p className="break-words font-medium text-slate-900">{testCase.title}</p>
+                        <p className="mt-1 break-words text-[11px] text-slate-500">{testCase.module}</p>
                       </td>
-                      <td className="max-w-56 whitespace-pre-wrap px-4 py-4 text-xs leading-5 text-slate-600">
+                      <td className="max-w-[14rem] whitespace-pre-wrap px-3 py-4 text-[11px] leading-5 text-slate-600">
                         {testCase.steps}
                       </td>
-                      <td className="max-w-48 px-4 py-4 text-xs leading-5 text-slate-600">
+                      <td className="max-w-[12rem] px-3 py-4 text-[11px] leading-5 text-slate-600">
                         {testCase.expected_result}
                       </td>
-                      <td className="px-4 py-4">
+                      <td className="px-3 py-4">
                         <select
                           aria-label={`Status for ${testCase.title}`}
                           value={testCase.status ?? "Not Run"}
                           onChange={(event) => changeStatus(testCase, event.target.value)}
-                          className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-xs"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-[11px]"
                         >
                           {statuses.map((status) => <option key={status}>{status}</option>)}
                         </select>
                       </td>
-                      <td className="whitespace-nowrap px-4 py-4">
-                        <button
-                          type="button"
-                          onClick={() => beginEdit(testCase)}
-                          className="mr-3 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteCase(testCase)}
-                          className="text-xs font-semibold text-rose-600 hover:text-rose-800"
-                        >
-                          Delete
-                        </button>
+                      <td className="whitespace-nowrap px-3 py-4">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          {testCase.status === "Fail" ? (
+                            linkedBugsByCaseId.has(testCase.id) ? (
+                              <Link
+                                to="/bugs"
+                                className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                              >
+                                Bug #{linkedBugsByCaseId.get(testCase.id)?.id}
+                              </Link>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => openCreateBugForCase(testCase)}
+                                className="text-[11px] font-semibold text-rose-600 hover:text-rose-800"
+                              >
+                                Create bug
+                              </button>
+                            )
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => beginEdit(testCase)}
+                            className="text-[11px] font-semibold text-indigo-600 hover:text-indigo-800"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteCase(testCase)}
+                            className="text-[11px] font-semibold text-rose-600 hover:text-rose-800"
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

@@ -7,6 +7,14 @@ import {
   calculateSuccessRate,
   parsePlaywrightJsonReport,
 } from "../lib/automationApi.js";
+import {
+  automationGlossary,
+  automationLessons,
+} from "../data/automationLessons.js";
+import {
+  getProgressSummary,
+  markLessonDone,
+} from "../lib/automationLearning.js";
 import { supabase } from "../lib/supabase.js";
 
 const metricCards = [
@@ -105,6 +113,13 @@ export default function AutomationTestingPage() {
   const [manualSaving, setManualSaving] = useState(false);
   const [resultSearch, setResultSearch] = useState("");
   const [resultStatusFilter, setResultStatusFilter] = useState("all");
+  const [activeTab, setActiveTab] = useState("results");
+  const [selectedLessonIndex, setSelectedLessonIndex] = useState(0);
+  const [completedLessonIds, setCompletedLessonIds] = useState(() => new Set());
+  const [progressLoading, setProgressLoading] = useState(true);
+  const [progressError, setProgressError] = useState("");
+  const [savingLessonId, setSavingLessonId] = useState("");
+  const [copiedCodeKey, setCopiedCodeKey] = useState("");
 
   const isAdmin = role === "admin";
   const latestRun = runs[0] ?? null;
@@ -175,6 +190,13 @@ export default function AutomationTestingPage() {
       .join(" ");
   }, [chartValues]);
 
+  const progressSummary = useMemo(
+    () => getProgressSummary([...completedLessonIds], automationLessons),
+    [completedLessonIds],
+  );
+
+  const selectedLesson = automationLessons[selectedLessonIndex] ?? automationLessons[0];
+
   const visibleResults = useMemo(() => {
     const query = (resultSearch || "").trim().toLowerCase();
     return (results || []).filter((result) => {
@@ -224,6 +246,54 @@ export default function AutomationTestingPage() {
       .filter(([, value]) => value.passed > 0 && value.failed > 0)
       .map(([name, value]) => ({ name, passed: value.passed, failed: value.failed }));
   }, [results, runs]);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setCompletedLessonIds(new Set());
+      setProgressLoading(false);
+      setProgressError("Sign in to save and load your automation lesson progress.");
+      return;
+    }
+
+    let active = true;
+
+    async function loadLessonProgress() {
+      setProgressLoading(true);
+      setProgressError("");
+
+      try {
+        const { data, error } = await supabase
+          .from("learning_progress")
+          .select("lesson_id")
+          .eq("user_id", user.id);
+
+        if (error) throw error;
+        if (!active) return;
+
+        const nextCompleted = new Set(
+          (data ?? [])
+            .map((row) => String(row.lesson_id || ""))
+            .filter((lessonId) => lessonId),
+        );
+        setCompletedLessonIds(nextCompleted);
+      } catch (progressErrorCatch) {
+        if (active) {
+          setProgressError(
+            progressErrorCatch instanceof Error
+              ? progressErrorCatch.message
+              : "Could not load lesson progress.",
+          );
+        }
+      } finally {
+        if (active) setProgressLoading(false);
+      }
+    }
+
+    loadLessonProgress();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) {
@@ -650,6 +720,55 @@ export default function AutomationTestingPage() {
     }
   }
 
+  async function markLessonCompleted(lessonId) {
+    if (!user?.id || !lessonId || savingLessonId || completedLessonIds.has(lessonId)) {
+      return;
+    }
+
+    setSavingLessonId(lessonId);
+    try {
+      const { error } = await supabase.from("learning_progress").upsert(
+        { user_id: user.id, lesson_id: lessonId },
+        { onConflict: "user_id,lesson_id" },
+      );
+
+      if (error) throw error;
+      setCompletedLessonIds((current) => markLessonDone(current, lessonId));
+      setProgressError("");
+      setFeedback({
+        type: "success",
+        text: "Lesson marked as done and saved to your account.",
+      });
+    } catch (progressErrorCatch) {
+      setFeedback({
+        type: "error",
+        text:
+          progressErrorCatch instanceof Error
+            ? progressErrorCatch.message
+            : "Could not save lesson progress.",
+      });
+    } finally {
+      setSavingLessonId("");
+    }
+  }
+
+  async function copyText(text, codeKey) {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCodeKey(codeKey);
+      setFeedback({ type: "success", text: "Copied." });
+      window.setTimeout(() => setCopiedCodeKey((current) => (current === codeKey ? "" : current)), 1200);
+    } catch (copyError) {
+      setFeedback({
+        type: "error",
+        text:
+          copyError instanceof Error
+            ? copyError.message
+            : "Could not copy the command.",
+      });
+    }
+  }
+
   return (
     <>
       <PageHeader
@@ -684,9 +803,40 @@ export default function AutomationTestingPage() {
         }
       />
 
+      <div className="mb-6 inline-flex rounded-xl bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab("results")}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeTab === "results"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Results
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("learn")}
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeTab === "learn"
+              ? "bg-white text-slate-900 shadow-sm"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+        >
+          Learn
+        </button>
+      </div>
+
       {feedback && (
         <div className="mb-6">
           <Feedback message={feedback.text} type={feedback.type} />
+        </div>
+      )}
+
+      {progressError && (
+        <div className="mb-6">
+          <Feedback message={progressError} type="error" />
         </div>
       )}
 
@@ -723,404 +873,639 @@ export default function AutomationTestingPage() {
 
       {!loading && !errorMessage && (
         <>
-          {runs.length === 0 ? (
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-              <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-900">Getting started</h2>
-                  <ol className="mt-4 space-y-3 text-sm text-slate-600">
-                    <li><span className="font-semibold text-slate-900">1.</span> Run Playwright with the JSON reporter.</li>
-                    <li><span className="font-semibold text-slate-900">2.</span> Click Import results and select the JSON file or paste it.</li>
-                    <li><span className="font-semibold text-slate-900">3.</span> Review failures, create bugs, and share the run results.</li>
-                  </ol>
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <code className="text-xs text-slate-700">npx playwright test --reporter=json &gt; report.json</code>
+          <div className={activeTab === "results" ? "block" : "hidden"}>
+            {runs.length === 0 ? (
+              <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+                <div className="grid gap-6 lg:grid-cols-[1.4fr_0.9fr]">
+                  <div>
+                    <h2 className="text-xl font-semibold text-slate-900">Getting started</h2>
+                    <ol className="mt-4 space-y-3 text-sm text-slate-600">
+                      <li><span className="font-semibold text-slate-900">1.</span> Run Playwright with the JSON reporter.</li>
+                      <li><span className="font-semibold text-slate-900">2.</span> Click Import results and select the JSON file or paste it.</li>
+                      <li><span className="font-semibold text-slate-900">3.</span> Review failures, create bugs, and share the run results.</li>
+                    </ol>
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <code className="text-xs text-slate-700">npx playwright test --reporter=json &gt; report.json</code>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard("npx playwright test --reporter=json > report.json", "Command")}
+                          className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                        >
+                          Copy
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowImportDialog(true)}
+                      className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-500"
+                    >
+                      Import results
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowManualDialog(true)}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Add run manually
+                    </button>
+                    <button
+                      type="button"
+                      onClick={loadSampleData}
+                      className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                    >
+                      Load sample data
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                <section aria-label="Automation metrics" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                  {metricCards.map((card) => {
+                    const value = latestMetrics ? latestMetrics[card.key] ?? 0 : 0;
+                    const previousValue = previousRun ? previousRun[card.key] ?? 0 : null;
+                    const delta = previousValue === null ? "—" : getDelta(value, previousValue);
+                    return (
+                      <article key={card.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <p className="text-sm font-medium text-slate-600">{card.label}</p>
+                        <p className={`mt-3 text-3xl font-semibold ${card.color}`}>
+                          {latestRun ? value.toLocaleString() : "—"}
+                        </p>
+                        <p className="mt-2 text-xs text-slate-500">
+                          {previousValue === null ? "No previous run" : `${delta} vs previous run`}
+                        </p>
+                      </article>
+                    );
+                  })}
+                  <article className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 shadow-sm">
+                    <p className="text-sm font-medium text-indigo-800">Success rate</p>
+                    <p className="mt-3 text-3xl font-semibold text-indigo-900">
+                      {latestSuccessRate !== null ? `${latestSuccessRate}%` : "—"}
+                    </p>
+                    <p className="mt-2 text-xs text-indigo-700">
+                      {previousRun && latestRun
+                        ? `${getDelta(latestSuccessRate ?? 0, calculateSuccessRate(previousRun.passed ?? 0, previousRun.failed ?? 0) ?? 0)}% vs previous run`
+                        : "Skipped tests excluded"}
+                    </p>
+                  </article>
+                </section>
+
+                <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <h2 className="text-lg font-semibold text-slate-900">Pass-rate trend</h2>
+                    <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Last 10 runs</span>
+                  </div>
+                  {chartValues.length > 0 ? (
+                    <svg viewBox="0 0 100 100" className="h-36 w-full overflow-visible rounded-xl bg-slate-50 p-2">
+                      <polyline
+                        fill="none"
+                        stroke="#4f46e5"
+                        strokeWidth="2.5"
+                        points={chartPoints}
+                      />
+                      {chartValues.map((point, index) => {
+                        const x = chartValues.length === 1 ? 50 : (index / (chartValues.length - 1)) * 100;
+                        const maxValue = Math.max(100, ...chartValues.map((item) => item.value), 0);
+                        const y = 100 - (point.value / maxValue) * 100;
+                        return (
+                          <g key={point.run.id}>
+                            <circle cx={x} cy={y} r="2.4" fill="#4f46e5" />
+                            <text x={x} y="97" textAnchor="middle" fontSize="4" fill="#64748b">
+                              {new Date(point.run.started_at).toLocaleDateString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </svg>
+                  ) : (
+                    <p className="text-sm text-slate-500">No trend data yet.</p>
+                  )}
+                </section>
+
+                <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">Recent executions</h2>
+                      <p className="mt-1 text-sm text-slate-600">Latest run history and filters.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        value={searchTerm}
+                        onChange={(event) => setSearchTerm(event.target.value)}
+                        placeholder="Search run name"
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
+                      />
+                      <select
+                        value={statusFilter}
+                        onChange={(event) => setStatusFilter(event.target.value)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
+                      >
+                        <option value="all">All statuses</option>
+                        <option value="passed">Passed</option>
+                        <option value="failed">Failed</option>
+                        <option value="running">Running</option>
+                      </select>
+                      <select
+                        value={sortField}
+                        onChange={(event) => setSortField(event.target.value)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
+                      >
+                        <option value="started_at">Sort by date</option>
+                        <option value="total">Sort by total</option>
+                        <option value="passed">Sort by passed</option>
+                      </select>
                       <button
                         type="button"
-                        onClick={() => copyToClipboard("npx playwright test --reporter=json > report.json", "Command")}
-                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                        onClick={() => setSortDirection((current) => (current === "desc" ? "asc" : "desc"))}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
                       >
-                        Copy
+                        {sortDirection === "desc" ? "Newest" : "Oldest"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {filteredRuns.length === 0 ? (
+                    <p className="px-5 py-10 text-center text-sm text-slate-600">
+                      No runs match the current filters.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full table-auto divide-y divide-slate-200 text-left text-sm">
+                          <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                            <tr>
+                              <th className="px-4 py-3">Run name</th>
+                              <th className="px-4 py-3">Source</th>
+                              <th className="px-4 py-3">Date</th>
+                              <th className="px-4 py-3">Total</th>
+                              <th className="px-4 py-3">Passed</th>
+                              <th className="px-4 py-3">Failed</th>
+                              <th className="px-4 py-3">Skipped</th>
+                              <th className="px-4 py-3">Status</th>
+                              <th className="px-4 py-3">Duration</th>
+                              {isAdmin && <th className="px-4 py-3">Created by</th>}
+                              <th className="px-4 py-3">Delete</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {visibleRuns.map((run) => (
+                              <tr
+                                key={run.id}
+                                className={selectedRunId === run.id ? "cursor-pointer bg-indigo-50/40" : "cursor-pointer hover:bg-slate-50"}
+                                onClick={() => setSelectedRunId(run.id)}
+                              >
+                                <td className="px-4 py-3 font-medium text-slate-900">{getRunName(run)}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold uppercase ${sourceBadgeStyle(run.source)}`}>
+                                    {run.source || "local"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-600">{formatDate(run.started_at)}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.total ?? 0}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.passed ?? 0}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.failed ?? 0}</td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.skipped ?? 0}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${runStatusStyle(run.status)}`}>
+                                    {run.status || "running"}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 whitespace-nowrap text-slate-600">{formatDuration(run.finished_at ? (new Date(run.finished_at) - new Date(run.started_at)) : null)}</td>
+                                {isAdmin ? (
+                                  <td className="px-4 py-3 text-slate-600">
+                                    {run.profiles?.email || run.created_by || "—"}
+                                  </td>
+                                ) : null}
+                                <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteRun(run.id)}
+                                    className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700"
+                                  >
+                                    Delete
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {visibleCount < filteredRuns.length && (
+                        <div className="flex justify-center border-t border-slate-200 px-5 py-4">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleCount((current) => current + 10)}
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                          >
+                            Load more
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+
+                {selectedRun && (
+                  <section className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                      <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-lg font-semibold text-slate-900">{getRunName(selectedRun)}</h3>
+                          <p className="mt-1 text-sm text-slate-600">
+                            {formatDate(selectedRun.started_at)} · {selectedRun.source || "local"}
+                          </p>
+                        </div>
+                        <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${runStatusStyle(selectedRun.status)}`}>
+                          {selectedRun.status || "running"}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                        <div className="rounded-xl bg-slate-50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
+                          <p className="mt-1 text-xl font-semibold text-slate-900">{selectedRun.total ?? 0}</p>
+                        </div>
+                        <div className="rounded-xl bg-emerald-50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-emerald-700">Passed</p>
+                          <p className="mt-1 text-xl font-semibold text-emerald-700">{selectedRun.passed ?? 0}</p>
+                        </div>
+                        <div className="rounded-xl bg-rose-50 p-3">
+                          <p className="text-xs uppercase tracking-wide text-rose-700">Failed</p>
+                          <p className="mt-1 text-xl font-semibold text-rose-700">{selectedRun.failed ?? 0}</p>
+                        </div>
+                      </div>
+
+                      <div className="mt-6">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                          <select
+                            value={resultStatusFilter}
+                            onChange={(event) => setResultStatusFilter(event.target.value)}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+                          >
+                            <option value="all">All</option>
+                            <option value="failed">Failed</option>
+                            <option value="passed">Passed</option>
+                            <option value="skipped">Skipped</option>
+                          </select>
+                          <input
+                            value={resultSearch}
+                            onChange={(event) => setResultSearch(event.target.value)}
+                            placeholder="Search tests or errors"
+                            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        {loadingResults ? (
+                          <p className="py-4 text-sm text-slate-600">Loading run details...</p>
+                        ) : visibleResults.length === 0 ? (
+                          <p className="py-4 text-sm text-slate-600">No results match the current filters.</p>
+                        ) : (
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full table-auto divide-y divide-slate-200 text-left text-sm">
+                              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                                <tr>
+                                  <th className="px-3 py-3">Test</th>
+                                  <th className="px-3 py-3">Status</th>
+                                  <th className="px-3 py-3">Duration</th>
+                                  <th className="px-3 py-3">Error</th>
+                                  <th className="px-3 py-3">Action</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {visibleResults.map((result) => (
+                                  <tr key={result.id}>
+                                    <td className="px-3 py-3 font-medium text-slate-900">{result.test_name || "Unnamed test"}</td>
+                                    <td className="px-3 py-3">
+                                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${runStatusStyle(result.status)}`}>
+                                        {result.status || "passed"}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-3 whitespace-nowrap text-slate-600">{formatDuration(result.duration_ms)}</td>
+                                    <td className="px-3 py-3 text-slate-600">
+                                      {result.error_message ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => copyToClipboard(result.error_message, "Error message")}
+                                          className="text-left underline decoration-dotted underline-offset-2"
+                                        >
+                                          {result.error_message}
+                                        </button>
+                                      ) : (
+                                        "—"
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {String(result.status ?? "").toLowerCase() === "failed" && (
+                                        <button
+                                          type="button"
+                                          onClick={() => openBugFromResult(result)}
+                                          className="mb-2 block rounded-md bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-500"
+                                        >
+                                          Create bug
+                                        </button>
+                                      )}
+                                      {result.linked_test_case_id ? (
+                                        <Link
+                                          to={`/manual-testing?case=${result.linked_test_case_id}`}
+                                          className="inline-flex items-center text-sm font-medium text-indigo-700 hover:text-indigo-500"
+                                        >
+                                          View test case
+                                        </Link>
+                                      ) : (
+                                        <span className="text-slate-400">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h3 className="text-lg font-semibold text-slate-900">Slowest tests</h3>
+                        <ul className="mt-4 space-y-3">
+                          {slowestTests.length === 0 ? (
+                            <li className="text-sm text-slate-500">No tests with timing data.</li>
+                          ) : (
+                            slowestTests.map((result) => (
+                              <li key={result.id} className="rounded-xl bg-slate-50 p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="font-medium text-slate-800">{result.test_name}</p>
+                                  <span className="text-xs text-slate-500">{formatDuration(result.duration_ms)}</span>
+                                </div>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+
+                      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                        <h3 className="text-lg font-semibold text-slate-900">Flaky tests</h3>
+                        <ul className="mt-4 space-y-3">
+                          {flakyTests.length === 0 ? (
+                            <li className="text-sm text-slate-500">No flaky tests in the last 10 runs.</li>
+                          ) : (
+                            flakyTests.map((item) => (
+                              <li key={item.name} className="rounded-xl bg-amber-50 p-3">
+                                <p className="font-medium text-slate-800">{item.name}</p>
+                                <p className="mt-1 text-sm text-slate-600">
+                                  Passed {item.passed} · Failed {item.failed}
+                                </p>
+                              </li>
+                            ))
+                          )}
+                        </ul>
+                      </div>
+                    </div>
+                  </section>
+                )}
+              </div>
+            )}
+          </div>
+
+          {activeTab === "learn" && (
+            <section className="space-y-6">
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.12em] text-indigo-600">
+                      Automation basics
+                    </p>
+                    <h2 className="mt-2 text-2xl font-bold text-slate-900">
+                      Learn automation testing
+                    </h2>
+                  </div>
+                  <div className="min-w-0 md:w-72">
+                    <div className="mb-2 flex items-center justify-between text-sm text-slate-600">
+                      <span>
+                        {progressSummary.completedCount} of {progressSummary.totalLessons} done
+                      </span>
+                      <span>{progressSummary.progressPercent}%</span>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                      <div
+                        className="h-full rounded-full bg-indigo-600 transition-[width]"
+                        style={{ width: `${progressSummary.progressPercent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.4fr)]">
+                <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="text-lg font-semibold text-slate-900">Lessons</h3>
+                  <div className="mt-4 space-y-3">
+                    {automationLessons.map((lesson, index) => {
+                      const isActive = selectedLessonIndex === index;
+                      const isDone = completedLessonIds.has(lesson.id);
+                      return (
+                        <button
+                          key={lesson.id}
+                          type="button"
+                          onClick={() => setSelectedLessonIndex(index)}
+                          className={`w-full rounded-xl border p-3 text-left transition ${
+                            isActive
+                              ? "border-indigo-200 bg-indigo-50"
+                              : "border-slate-200 bg-slate-50 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-sm font-semibold text-slate-900">
+                              {index + 1}. {lesson.title}
+                            </span>
+                            {isDone ? (
+                              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+                                Done
+                              </span>
+                            ) : null}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-6 rounded-2xl border border-indigo-100 bg-indigo-50 p-4">
+                    <h4 className="text-sm font-semibold uppercase tracking-wide text-indigo-700">
+                      Glossary
+                    </h4>
+                    <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                      {automationGlossary.map((item) => (
+                        <li key={item.term}>
+                          <span className="font-semibold text-slate-900">{item.term}:</span>{" "}
+                          {item.definition}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </aside>
+
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold uppercase tracking-[0.12em] text-indigo-600">
+                        Lesson {selectedLessonIndex + 1}
+                      </p>
+                      <h3 className="mt-2 text-2xl font-bold text-slate-900">
+                        {selectedLesson.title}
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => markLessonCompleted(selectedLesson.id)}
+                      disabled={!user?.id || savingLessonId === selectedLesson.id || completedLessonIds.has(selectedLesson.id)}
+                      className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {savingLessonId === selectedLesson.id
+                        ? "Saving..."
+                        : completedLessonIds.has(selectedLesson.id)
+                          ? "Done"
+                          : "Mark as done"}
+                    </button>
+                  </div>
+
+                  <div className="mt-5 space-y-6">
+                    <div>
+                      <h4 className="text-lg font-semibold text-slate-900">What you will learn</h4>
+                      <p className="mt-2 text-base text-slate-700">
+                        {selectedLesson.whatYouWillLearn}
+                      </p>
+                    </div>
+
+                    <div>
+                      <h4 className="text-lg font-semibold text-slate-900">Why it matters</h4>
+                      <div className="mt-2 space-y-3 text-base leading-7 text-slate-700">
+                        {selectedLesson.explanation.map((paragraph) => (
+                          <p key={paragraph}>{paragraph}</p>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="text-lg font-semibold text-slate-900">Steps</h4>
+                      <ol className="mt-3 list-decimal space-y-2 pl-5 text-base leading-7 text-slate-700">
+                        {selectedLesson.steps.map((step) => (
+                          <li key={step}>{step}</li>
+                        ))}
+                      </ol>
+                    </div>
+
+                    {selectedLesson.commands && selectedLesson.commands.length > 0 && (
+                      <div>
+                        <h4 className="text-lg font-semibold text-slate-900">Commands</h4>
+                        <div className="mt-3 space-y-4">
+                          {selectedLesson.commands.map((command) => {
+                            const key = `${selectedLesson.id}-${command.label}`;
+                            return (
+                              <div
+                                key={key}
+                                className="rounded-xl border border-slate-200 bg-slate-950 p-3"
+                              >
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-300">
+                                    {command.label}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => copyText(command.command, key)}
+                                    className="rounded-md border border-slate-700 bg-slate-800 px-2 py-1 text-xs font-semibold text-slate-100"
+                                  >
+                                    {copiedCodeKey === key ? "Copied" : "Copy"}
+                                  </button>
+                                </div>
+                                <pre className="overflow-x-auto whitespace-pre-wrap font-mono text-sm text-slate-100">
+                                  {command.command}
+                                </pre>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <h4 className="text-lg font-semibold text-slate-900">What you should see</h4>
+                      <p className="mt-2 text-base text-slate-700">
+                        {selectedLesson.whatYouShouldSee}
+                      </p>
+                    </div>
+
+                    <div>
+                      <h4 className="text-lg font-semibold text-slate-900">Common problems</h4>
+                      <ul className="mt-3 list-disc space-y-2 pl-5 text-base text-slate-700">
+                        {selectedLesson.commonProblems.map((problem) => (
+                          <li key={problem}>{problem}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                      <h4 className="text-lg font-semibold text-amber-800">Stuck?</h4>
+                      <p className="mt-2 text-base text-amber-900">
+                        <span className="font-semibold">{selectedLesson.stuck.title}:</span>{" "}
+                        {selectedLesson.stuck.fix}
+                      </p>
+                    </div>
+
+                    {selectedLesson.callToAction && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setActiveTab("results");
+                            setShowImportDialog(true);
+                          }}
+                          className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white"
+                        >
+                          {selectedLesson.callToAction}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 pt-4">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedLessonIndex((current) => Math.max(0, current - 1))}
+                      disabled={selectedLessonIndex === 0}
+                      className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Back
+                    </button>
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLessonIndex((current) => Math.max(0, current - 1))}
+                        disabled={selectedLessonIndex === 0}
+                        className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Previous lesson
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLessonIndex((current) => Math.min(automationLessons.length - 1, current + 1))}
+                        disabled={selectedLessonIndex === automationLessons.length - 1}
+                        className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Next lesson
                       </button>
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowImportDialog(true)}
-                    className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white hover:bg-indigo-500"
-                  >
-                    Import results
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowManualDialog(true)}
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Add run manually
-                  </button>
-                  <button
-                    type="button"
-                    onClick={loadSampleData}
-                    className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
-                  >
-                    Load sample data
-                  </button>
-                </div>
               </div>
-            </div>
-          ) : (
-            <>
-              <section aria-label="Automation metrics" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-                {metricCards.map((card) => {
-                  const value = latestMetrics ? latestMetrics[card.key] ?? 0 : 0;
-                  const previousValue = previousRun ? previousRun[card.key] ?? 0 : null;
-                  const delta = previousValue === null ? "—" : getDelta(value, previousValue);
-                  return (
-                    <article key={card.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <p className="text-sm font-medium text-slate-600">{card.label}</p>
-                      <p className={`mt-3 text-3xl font-semibold ${card.color}`}>
-                        {latestRun ? value.toLocaleString() : "—"}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-500">
-                        {previousValue === null ? "No previous run" : `${delta} vs previous run`}
-                      </p>
-                    </article>
-                  );
-                })}
-                <article className="rounded-2xl border border-indigo-100 bg-indigo-50 p-5 shadow-sm">
-                  <p className="text-sm font-medium text-indigo-800">Success rate</p>
-                  <p className="mt-3 text-3xl font-semibold text-indigo-900">
-                    {latestSuccessRate !== null ? `${latestSuccessRate}%` : "—"}
-                  </p>
-                  <p className="mt-2 text-xs text-indigo-700">
-                    {previousRun && latestRun
-                      ? `${getDelta(latestSuccessRate ?? 0, calculateSuccessRate(previousRun.passed ?? 0, previousRun.failed ?? 0) ?? 0)}% vs previous run`
-                      : "Skipped tests excluded"}
-                  </p>
-                </article>
-              </section>
-
-              <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-slate-900">Pass-rate trend</h2>
-                  <span className="text-xs font-medium uppercase tracking-wide text-slate-500">Last 10 runs</span>
-                </div>
-                {chartValues.length > 0 ? (
-                  <svg viewBox="0 0 100 100" className="h-36 w-full overflow-visible rounded-xl bg-slate-50 p-2">
-                    <polyline
-                      fill="none"
-                      stroke="#4f46e5"
-                      strokeWidth="2.5"
-                      points={chartPoints}
-                    />
-                    {chartValues.map((point, index) => {
-                      const x = chartValues.length === 1 ? 50 : (index / (chartValues.length - 1)) * 100;
-                      const maxValue = Math.max(100, ...chartValues.map((item) => item.value), 0);
-                      const y = 100 - (point.value / maxValue) * 100;
-                      return (
-                        <g key={point.run.id}>
-                          <circle cx={x} cy={y} r="2.4" fill="#4f46e5" />
-                          <text x={x} y="97" textAnchor="middle" fontSize="4" fill="#64748b">
-                            {new Date(point.run.started_at).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </text>
-                        </g>
-                      );
-                    })}
-                  </svg>
-                ) : (
-                  <p className="text-sm text-slate-500">No trend data yet.</p>
-                )}
-              </section>
-
-              <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h2 className="text-lg font-semibold text-slate-900">Recent executions</h2>
-                    <p className="mt-1 text-sm text-slate-600">Latest run history and filters.</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <input
-                      value={searchTerm}
-                      onChange={(event) => setSearchTerm(event.target.value)}
-                      placeholder="Search run name"
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
-                    />
-                    <select
-                      value={statusFilter}
-                      onChange={(event) => setStatusFilter(event.target.value)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
-                    >
-                      <option value="all">All statuses</option>
-                      <option value="passed">Passed</option>
-                      <option value="failed">Failed</option>
-                      <option value="running">Running</option>
-                    </select>
-                    <select
-                      value={sortField}
-                      onChange={(event) => setSortField(event.target.value)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
-                    >
-                      <option value="started_at">Sort by date</option>
-                      <option value="total">Sort by total</option>
-                      <option value="passed">Sort by passed</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={() => setSortDirection((current) => (current === "desc" ? "asc" : "desc"))}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700"
-                    >
-                      {sortDirection === "desc" ? "Newest" : "Oldest"}
-                    </button>
-                  </div>
-                </div>
-
-                {filteredRuns.length === 0 ? (
-                  <p className="px-5 py-10 text-center text-sm text-slate-600">
-                    No runs match the current filters.
-                  </p>
-                ) : (
-                  <>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full table-auto divide-y divide-slate-200 text-left text-sm">
-                        <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                          <tr>
-                            <th className="px-4 py-3">Run name</th>
-                            <th className="px-4 py-3">Source</th>
-                            <th className="px-4 py-3">Date</th>
-                            <th className="px-4 py-3">Total</th>
-                            <th className="px-4 py-3">Passed</th>
-                            <th className="px-4 py-3">Failed</th>
-                            <th className="px-4 py-3">Skipped</th>
-                            <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3">Duration</th>
-                            {isAdmin && <th className="px-4 py-3">Created by</th>}
-                            <th className="px-4 py-3">Delete</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {visibleRuns.map((run) => (
-                            <tr
-                              key={run.id}
-                              className={selectedRunId === run.id ? "cursor-pointer bg-indigo-50/40" : "cursor-pointer hover:bg-slate-50"}
-                              onClick={() => setSelectedRunId(run.id)}
-                            >
-                              <td className="px-4 py-3 font-medium text-slate-900">{getRunName(run)}</td>
-                              <td className="px-4 py-3">
-                                <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold uppercase ${sourceBadgeStyle(run.source)}`}>
-                                  {run.source || "local"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{formatDate(run.started_at)}</td>
-                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.total ?? 0}</td>
-                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.passed ?? 0}</td>
-                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.failed ?? 0}</td>
-                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{run.skipped ?? 0}</td>
-                              <td className="px-4 py-3">
-                                <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${runStatusStyle(run.status)}`}>
-                                  {run.status || "running"}
-                                </span>
-                              </td>
-                              <td className="px-4 py-3 whitespace-nowrap text-slate-600">{formatDuration(run.finished_at ? (new Date(run.finished_at) - new Date(run.started_at)) : null)}</td>
-                              {isAdmin ? (
-                                <td className="px-4 py-3 text-slate-600">
-                                  {run.profiles?.email || run.created_by || "—"}
-                                </td>
-                              ) : null}
-                              <td className="px-4 py-3" onClick={(event) => event.stopPropagation()}>
-                                <button
-                                  type="button"
-                                  onClick={() => deleteRun(run.id)}
-                                  className="rounded-md border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700"
-                                >
-                                  Delete
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {visibleCount < filteredRuns.length && (
-                      <div className="flex justify-center border-t border-slate-200 px-5 py-4">
-                        <button
-                          type="button"
-                          onClick={() => setVisibleCount((current) => current + 10)}
-                          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-                        >
-                          Load more
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </section>
-
-              {selectedRun && (
-                <section className="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                    <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900">{getRunName(selectedRun)}</h3>
-                        <p className="mt-1 text-sm text-slate-600">
-                          {formatDate(selectedRun.started_at)} · {selectedRun.source || "local"}
-                        </p>
-                      </div>
-                      <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${runStatusStyle(selectedRun.status)}`}>
-                        {selectedRun.status || "running"}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-xl bg-slate-50 p-3">
-                        <p className="text-xs uppercase tracking-wide text-slate-500">Total</p>
-                        <p className="mt-1 text-xl font-semibold text-slate-900">{selectedRun.total ?? 0}</p>
-                      </div>
-                      <div className="rounded-xl bg-emerald-50 p-3">
-                        <p className="text-xs uppercase tracking-wide text-emerald-700">Passed</p>
-                        <p className="mt-1 text-xl font-semibold text-emerald-700">{selectedRun.passed ?? 0}</p>
-                      </div>
-                      <div className="rounded-xl bg-rose-50 p-3">
-                        <p className="text-xs uppercase tracking-wide text-rose-700">Failed</p>
-                        <p className="mt-1 text-xl font-semibold text-rose-700">{selectedRun.failed ?? 0}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-6">
-                      <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <select
-                          value={resultStatusFilter}
-                          onChange={(event) => setResultStatusFilter(event.target.value)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-                        >
-                          <option value="all">All</option>
-                          <option value="failed">Failed</option>
-                          <option value="passed">Passed</option>
-                          <option value="skipped">Skipped</option>
-                        </select>
-                        <input
-                          value={resultSearch}
-                          onChange={(event) => setResultSearch(event.target.value)}
-                          placeholder="Search tests or errors"
-                          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-indigo-500"
-                        />
-                      </div>
-
-                      {loadingResults ? (
-                        <p className="py-4 text-sm text-slate-600">Loading run details...</p>
-                      ) : visibleResults.length === 0 ? (
-                        <p className="py-4 text-sm text-slate-600">No results match the current filters.</p>
-                      ) : (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full table-auto divide-y divide-slate-200 text-left text-sm">
-                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-                              <tr>
-                                <th className="px-3 py-3">Test</th>
-                                <th className="px-3 py-3">Status</th>
-                                <th className="px-3 py-3">Duration</th>
-                                <th className="px-3 py-3">Error</th>
-                                <th className="px-3 py-3">Action</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {visibleResults.map((result) => (
-                                <tr key={result.id}>
-                                  <td className="px-3 py-3 font-medium text-slate-900">{result.test_name || "Unnamed test"}</td>
-                                  <td className="px-3 py-3">
-                                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold capitalize ${runStatusStyle(result.status)}`}>
-                                      {result.status || "passed"}
-                                    </span>
-                                  </td>
-                                  <td className="px-3 py-3 whitespace-nowrap text-slate-600">{formatDuration(result.duration_ms)}</td>
-                                  <td className="px-3 py-3 text-slate-600">
-                                    {result.error_message ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => copyToClipboard(result.error_message, "Error message")}
-                                        className="text-left underline decoration-dotted underline-offset-2"
-                                      >
-                                        {result.error_message}
-                                      </button>
-                                    ) : (
-                                      "—"
-                                    )}
-                                  </td>
-                                  <td className="px-3 py-3">
-                                    {String(result.status ?? "").toLowerCase() === "failed" && (
-                                      <button
-                                        type="button"
-                                        onClick={() => openBugFromResult(result)}
-                                        className="mb-2 block rounded-md bg-rose-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-rose-500"
-                                      >
-                                        Create bug
-                                      </button>
-                                    )}
-                                    {result.linked_test_case_id ? (
-                                      <Link
-                                        to={`/manual-testing?case=${result.linked_test_case_id}`}
-                                        className="inline-flex items-center text-sm font-medium text-indigo-700 hover:text-indigo-500"
-                                      >
-                                        View test case
-                                      </Link>
-                                    ) : (
-                                      <span className="text-slate-400">—</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <h3 className="text-lg font-semibold text-slate-900">Slowest tests</h3>
-                      <ul className="mt-4 space-y-3">
-                        {slowestTests.length === 0 ? (
-                          <li className="text-sm text-slate-500">No tests with timing data.</li>
-                        ) : (
-                          slowestTests.map((result) => (
-                            <li key={result.id} className="rounded-xl bg-slate-50 p-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="font-medium text-slate-800">{result.test_name}</p>
-                                <span className="text-xs text-slate-500">{formatDuration(result.duration_ms)}</span>
-                              </div>
-                            </li>
-                          ))
-                        )}
-                      </ul>
-                    </div>
-
-                    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                      <h3 className="text-lg font-semibold text-slate-900">Flaky tests</h3>
-                      <ul className="mt-4 space-y-3">
-                        {flakyTests.length === 0 ? (
-                          <li className="text-sm text-slate-500">No flaky tests in the last 10 runs.</li>
-                        ) : (
-                          flakyTests.map((item) => (
-                            <li key={item.name} className="rounded-xl bg-amber-50 p-3">
-                              <p className="font-medium text-slate-800">{item.name}</p>
-                              <p className="mt-1 text-sm text-slate-600">
-                                Passed {item.passed} · Failed {item.failed}
-                              </p>
-                            </li>
-                          ))
-                        )}
-                      </ul>
-                    </div>
-                  </div>
-                </section>
-              )}
-            </>
+            </section>
           )}
         </>
       )}

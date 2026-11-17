@@ -1,8 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = "https://fesfjcyxcuxvdujhozvn.supabase.co";
-const supabaseAnonKey =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZlc2ZqY3l4Y3V4dmR1amhvenZuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTQyOTgwNjAsImV4cCI6MjEwOTg3NDA2MH0.Bu5GKUgmvIQBt4qwSEGxB8ZU13mm51rDb9A4dtYLCx8";
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    "Missing Supabase environment variables. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to client/.env.development, .env.staging, or .env.production before starting the app."
+  );
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

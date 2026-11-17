@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test src/lib/automationApi.test.js"
+    "test": "node --test src/lib/*.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.0.0",

@@ -1,37 +1,239 @@
 import initSqlJs from "sql.js";
 import sqlWasmUrl from "sql.js/dist/sql-wasm.wasm?url";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "../context/AuthContext.jsx";
 import Feedback from "../components/Feedback.jsx";
 import PageHeader from "../components/PageHeader.jsx";
+import { supabase } from "../lib/supabase.js";
+import { compareSqlResults } from "../lib/sqlPracticeUtils.js";
 
 const progressKey = "qahub_sql_solved_v2";
+
+const tableSchemas = {
+  users: [
+    { name: "id", type: "INTEGER" },
+    { name: "name", type: "TEXT" },
+    { name: "email", type: "TEXT" },
+    { name: "role", type: "TEXT" },
+    { name: "active", type: "INTEGER" },
+  ],
+  bugs: [
+    { name: "id", type: "INTEGER" },
+    { name: "title", type: "TEXT" },
+    { name: "severity", type: "TEXT" },
+    { name: "status", type: "TEXT" },
+  ],
+  test_cases: [
+    { name: "id", type: "INTEGER" },
+    { name: "title", type: "TEXT" },
+    { name: "module", type: "TEXT" },
+    { name: "status", type: "TEXT" },
+    { name: "tester_id", type: "INTEGER" },
+  ],
+  signups: [
+    { name: "id", type: "INTEGER" },
+    { name: "email", type: "TEXT" },
+    { name: "confirmed", type: "INTEGER" },
+  ],
+};
+
 const exercises = [
   {
     id: "active-users",
     title: "Find active users",
-    prompt: "Select the names of all active users.",
-    answer: "SELECT name FROM users WHERE active = 1 ORDER BY id;",
+    difficulty: "easy",
+    task: "Select the names of all active users.",
+    expectedQuery: "SELECT name FROM users WHERE active = 1 ORDER BY id;",
+    hints: [
+      "Start with SELECT name FROM users.",
+      "Use WHERE active = 1 to keep only active users.",
+      "Add ORDER BY id to make the list easy to read.",
+    ],
   },
   {
     id: "open-bugs",
     title: "Count open bugs",
-    prompt: "Return one column named open_bugs with the number of open bugs.",
-    answer: "SELECT COUNT(*) AS open_bugs FROM bugs WHERE status = 'Open';",
+    difficulty: "easy",
+    task: "Return one column named open_bugs with the number of open bugs.",
+    expectedQuery: "SELECT COUNT(*) AS open_bugs FROM bugs WHERE status = 'Open';",
+    hints: [
+      "Use COUNT(*) to count rows.",
+      "Filter the rows with WHERE status = 'Open'.",
+      "Give the result column an alias with AS open_bugs.",
+    ],
   },
   {
     id: "tester-join",
     title: "Join test cases to users",
-    prompt: "List each test case title and the tester name responsible for it.",
-    answer:
+    difficulty: "easy",
+    task: "List each test case title and the tester name responsible for it.",
+    expectedQuery:
       "SELECT test_cases.title, users.name FROM test_cases JOIN users ON test_cases.tester_id = users.id ORDER BY test_cases.id;",
+    hints: [
+      "Join test_cases to users with the tester_id column.",
+      "Select the test title and the user name.",
+      "Use ORDER BY test_cases.id to keep the rows in a clear order.",
+    ],
   },
   {
-    id: "resolve-bug",
-    title: "Update a bug",
-    prompt: "Change bug 2 to Resolved. Then verify its new status.",
-    answer: "UPDATE bugs SET status = 'Resolved' WHERE id = 2;",
-    verify: "SELECT status FROM bugs WHERE id = 2;",
-    expected: [["Resolved"]],
+    id: "bump-priority",
+    title: "Find high priority bugs",
+    difficulty: "easy",
+    task: "Show all bug titles with severity High.",
+    expectedQuery: "SELECT title FROM bugs WHERE severity = 'High';",
+    hints: [
+      "Use WHERE severity = 'High'.",
+      "Select only the title column.",
+      "No sorting is required for this one.",
+    ],
+  },
+  {
+    id: "ordered-bugs",
+    title: "Sort bugs by ID",
+    difficulty: "medium",
+    task: "List all bug ids and titles from newest to oldest, using the smallest number first.",
+    expectedQuery: "SELECT id, title FROM bugs ORDER BY id ASC;",
+    hints: [
+      "Choose the columns id and title.",
+      "Add ORDER BY id ASC to sort the rows.",
+      "The query should return all three bug rows.",
+    ],
+  },
+  {
+    id: "top-two-bugs",
+    title: "Limit rows",
+    difficulty: "medium",
+    task: "Show the first two bug titles only.",
+    expectedQuery: "SELECT title FROM bugs LIMIT 2;",
+    hints: [
+      "Select the title column only.",
+      "Use LIMIT 2 to keep the first two rows.",
+      "You do not need a WHERE clause here.",
+    ],
+  },
+  {
+    id: "bugs-by-severity",
+    title: "Group bugs by severity",
+    difficulty: "medium",
+    task: "Count bugs in each severity group.",
+    expectedQuery: "SELECT severity, COUNT(*) AS bug_count FROM bugs GROUP BY severity ORDER BY severity;",
+    hints: [
+      "Group by severity.",
+      "Use COUNT(*) to count each group.",
+      "Give the count a name and sort by severity.",
+    ],
+  },
+  {
+    id: "test-cases-per-module",
+    title: "Failed test cases per module",
+    difficulty: "medium",
+    task: "Count failed test cases by module.",
+    expectedQuery:
+      "SELECT module, COUNT(*) AS failed_tests FROM test_cases WHERE status = 'Fail' GROUP BY module ORDER BY module;",
+    hints: [
+      "Filter to rows where status = 'Fail'.",
+      "Group by module.",
+      "Count rows and sort by module.",
+    ],
+  },
+  {
+    id: "users-with-no-bugs",
+    title: "Users with no bugs",
+    difficulty: "hard",
+    task: "List users who have no matching bug record.",
+    expectedQuery:
+      "SELECT users.name FROM users LEFT JOIN bugs ON bugs.title = users.name WHERE bugs.id IS NULL;",
+    hints: [
+      "Use LEFT JOIN and compare with the bug table.",
+      "Keep rows where the bug row is missing.",
+      "Select the user name from the users table.",
+    ],
+  },
+  {
+    id: "unconfirmed-signups",
+    title: "Find unconfirmed signups",
+    difficulty: "easy",
+    task: "List emails from signups that are not confirmed.",
+    expectedQuery: "SELECT email FROM signups WHERE confirmed = 0 ORDER BY id;",
+    hints: [
+      "Filter with WHERE confirmed = 0.",
+      "Select the email column.",
+      "Add ORDER BY id if you want a stable order.",
+    ],
+  },
+  {
+    id: "active-testers",
+    title: "Active testers only",
+    difficulty: "easy",
+    task: "Show the names of testers whose account is active.",
+    expectedQuery: "SELECT name FROM users WHERE role = 'tester' AND active = 1 ORDER BY name;",
+    hints: [
+      "Use both a role filter and an active filter.",
+      "Select the name column.",
+      "Sort by name for a tidy list.",
+    ],
+  },
+  {
+    id: "bugs-per-status",
+    title: "Bugs per status",
+    difficulty: "medium",
+    task: "Count bugs by their status.",
+    expectedQuery: "SELECT status, COUNT(*) AS total FROM bugs GROUP BY status ORDER BY status;",
+    hints: [
+      "Group by the status column.",
+      "Use COUNT(*) to count rows in each group.",
+      "Sort by status so the output is easy to read.",
+    ],
+  },
+  {
+    id: "search-case-status",
+    title: "Search module status",
+    difficulty: "medium",
+    task: "Show the titles and module names for failed test cases in the Search module.",
+    expectedQuery:
+      "SELECT title, module FROM test_cases WHERE module = 'Search' AND status = 'Fail';",
+    hints: [
+      "Use WHERE module = 'Search'.",
+      "Also filter on status = 'Fail'.",
+      "Select the title and module columns.",
+    ],
+  },
+  {
+    id: "user-bug-counts",
+    title: "Count bugs by severity and status",
+    difficulty: "hard",
+    task: "Show severity and the count of bugs in each severity group.",
+    expectedQuery: "SELECT severity, COUNT(*) AS total FROM bugs GROUP BY severity ORDER BY severity;",
+    hints: [
+      "Group by severity.",
+      "Count the rows in each group.",
+      "Use ORDER BY severity for a stable result.",
+    ],
+  },
+  {
+    id: "tester-summary",
+    title: "Tester summary",
+    difficulty: "hard",
+    task: "List each tester name and how many test cases they own.",
+    expectedQuery:
+      "SELECT users.name, COUNT(test_cases.id) AS total_cases FROM users LEFT JOIN test_cases ON users.id = test_cases.tester_id WHERE users.role = 'tester' GROUP BY users.name ORDER BY users.name;",
+    hints: [
+      "Join users to test_cases on the user id.",
+      "Filter to testers only.",
+      "Group by the tester name and count matching rows.",
+    ],
+  },
+  {
+    id: "latest-signup",
+    title: "Most recent signup",
+    difficulty: "medium",
+    task: "Show the newest unconfirmed signup email and id.",
+    expectedQuery: "SELECT id, email FROM signups WHERE confirmed = 0 ORDER BY id DESC LIMIT 1;",
+    hints: [
+      "Filter with confirmed = 0.",
+      "Sort by id in descending order.",
+      "Use LIMIT 1 to keep the newest row.",
+    ],
   },
 ];
 
@@ -96,30 +298,30 @@ function finalStatement(sql) {
 }
 
 function runSql(db, sql) {
-  const result = db.exec(sql);
   const statement = finalStatement(sql);
+
+  if (!statement) {
+    return { columns: [], values: [], changedRows: null };
+  }
+
   const readOnly = /^(SELECT|WITH|PRAGMA)\b/i.test(statement);
 
   if (!readOnly) {
+    const result = db.run(sql);
     return {
       columns: ["Rows changed"],
       values: [[db.getRowsModified()]],
-      changedRows: db.getRowsModified(),
+      changedRows: result ? db.getRowsModified() : 0,
     };
   }
 
+  const result = db.exec(sql);
   const lastResult = result.at(-1);
   return {
     columns: lastResult?.columns ?? [],
     values: lastResult?.values ?? [],
     changedRows: null,
   };
-}
-
-function normalizeRows(rows) {
-  return [...rows]
-    .map((row) => JSON.stringify(row))
-    .sort();
 }
 
 function explainSqlError(error) {
@@ -131,7 +333,63 @@ function explainSqlError(error) {
   return message;
 }
 
+function sqlProgressErrorMessage(error) {
+  const message =
+    error instanceof Error ? error.message : "The request could not be completed.";
+
+  if (
+    message.includes("sql_practice_progress") &&
+    /schema cache|relation|does not exist|not found/i.test(message)
+  ) {
+    return "SQL progress storage is not set up yet. Run client/supabase/sql-practice-progress.sql in your Supabase SQL editor.";
+  }
+
+  return message;
+}
+
+function toCsvRow(values) {
+  return values
+    .map((value) => {
+      const text = value === null ? "" : String(value).replace(/"/g, '""');
+      return `"${text}"`;
+    })
+    .join(",");
+}
+
+function downloadCsv(result) {
+  if (!result || !result.columns.length) return;
+  const rows = [toCsvRow(result.columns), ...result.values.map((row) => toCsvRow(row))];
+  const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = "sql-practice-results.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function ProgressBar({ value, label }) {
+  return (
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={value}
+      className="h-2 overflow-hidden rounded-full bg-slate-200"
+    >
+      <div
+        className="h-full rounded-full bg-indigo-600 transition-[width]"
+        style={{ width: `${value}%` }}
+      />
+    </div>
+  );
+}
+
 export default function SqlPracticePage() {
+  const { user } = useAuth();
   const database = useRef(null);
   const sqlModule = useRef(null);
   const [engineReady, setEngineReady] = useState(false);
@@ -140,16 +398,35 @@ export default function SqlPracticePage() {
   const [query, setQuery] = useState("SELECT * FROM bugs;");
   const [result, setResult] = useState(null);
   const [queryError, setQueryError] = useState("");
-  const [selectedExercise, setSelectedExercise] = useState(exercises[0]);
-  const [solved, setSolved] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(progressKey) ?? "[]");
-    } catch (error) {
-      console.error("Could not read SQL practice progress:", error);
-      return [];
-    }
-  });
   const [checkMessage, setCheckMessage] = useState(null);
+  const [queryHistory, setQueryHistory] = useState([]);
+  const [executionTime, setExecutionTime] = useState(0);
+  const [selectedExercise, setSelectedExercise] = useState(exercises[0]);
+  const [exerciseProgress, setExerciseProgress] = useState({});
+  const [progressLoading, setProgressLoading] = useState(true);
+  const [progressError, setProgressError] = useState("");
+  const [selectedDifficulty, setSelectedDifficulty] = useState("all");
+  const [attemptsByExercise, setAttemptsByExercise] = useState({});
+  const [hintIndex, setHintIndex] = useState(0);
+  const [hintsVisible, setHintsVisible] = useState(false);
+  const [tablePreview, setTablePreview] = useState({});
+
+  const tabs = ["Playground", "Lessons", "Exercises", "Tables", "Cheat sheet"];
+  const visibleExercises = useMemo(
+    () =>
+      exercises.filter(
+        (exercise) => selectedDifficulty === "all" || exercise.difficulty === selectedDifficulty,
+      ),
+    [selectedDifficulty],
+  );
+
+  const completedExerciseIds = useMemo(
+    () => new Set(Object.entries(exerciseProgress).filter(([, value]) => value?.completed).map(([id]) => id)),
+    [exerciseProgress],
+  );
+  const totalExercises = exercises.length;
+  const completedExercises = completedExerciseIds.size;
+  const progressPercent = totalExercises ? Math.round((completedExercises / totalExercises) * 100) : 0;
 
   useEffect(() => {
     let active = true;
@@ -167,7 +444,6 @@ export default function SqlPracticePage() {
         database.current = loadedDatabase;
         setEngineReady(true);
       } catch (error) {
-        console.error("Could not initialize the SQL practice engine:", error);
         if (active) {
           setEngineError(
             error instanceof Error
@@ -189,65 +465,203 @@ export default function SqlPracticePage() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadProgress() {
+      if (!user?.id) {
+        try {
+          const savedProgress = JSON.parse(localStorage.getItem(progressKey) ?? "{}");
+          if (active) {
+            setExerciseProgress(savedProgress);
+          }
+        } catch {
+          if (active) {
+            setExerciseProgress({});
+          }
+        }
+        if (active) setProgressLoading(false);
+        return;
+      }
+
+      setProgressLoading(true);
+      setProgressError("");
+
+      try {
+        const { data, error } = await supabase
+          .from("sql_practice_progress")
+          .select("exercise_id, attempt_count, completed, completed_at")
+          .eq("user_id", user.id);
+
+        if (error) throw error;
+
+        const nextProgress = {};
+        for (const row of data ?? []) {
+          nextProgress[row.exercise_id] = {
+            attemptCount: row.attempt_count ?? 0,
+            completed: Boolean(row.completed),
+            completedAt: row.completed_at,
+          };
+        }
+
+        if (active) {
+          setExerciseProgress(nextProgress);
+        }
+      } catch (error) {
+        if (active) {
+        setProgressError(sqlProgressErrorMessage(error));
+        }
+      } finally {
+        if (active) setProgressLoading(false);
+      }
+    }
+
+    loadProgress();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
+
+  function persistProgress(exerciseId, completed, nextAttemptCount) {
+    const nextProgress = {
+      ...exerciseProgress,
+      [exerciseId]: {
+        attemptCount: nextAttemptCount,
+        completed,
+        completedAt: completed ? new Date().toISOString() : null,
+      },
+    };
+    setExerciseProgress(nextProgress);
+
+    if (user?.id) {
+      supabase
+        .from("sql_practice_progress")
+        .upsert(
+          {
+            user_id: user.id,
+            exercise_id: exerciseId,
+            attempt_count: nextAttemptCount,
+            completed,
+            completed_at: completed ? new Date().toISOString() : null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id,exercise_id" },
+        )
+        .then(({ error }) => {
+          if (error) {
+            setProgressError(error.message);
+          }
+        });
+      return;
+    }
+
+    localStorage.setItem(progressKey, JSON.stringify(nextProgress));
+  }
+
   function runQuery() {
     if (!database.current) return;
     setQueryError("");
-    setResult(null);
+    const started = performance.now();
     try {
-      setResult(runSql(database.current, query));
+      const nextResult = runSql(database.current, query);
+      setResult(nextResult);
+      setExecutionTime(Math.round(performance.now() - started));
+      setQueryHistory((current) => [query.trim(), ...current.filter((item) => item !== query.trim())].slice(0, 20));
     } catch (error) {
+      setExecutionTime(Math.round(performance.now() - started));
       setQueryError(explainSqlError(error));
     }
   }
 
-  function checkAnswer() {
-    if (!database.current) return;
-    setCheckMessage(null);
+  function resetDatabase() {
+    if (!sqlModule.current) return;
+    database.current = seedDatabase(sqlModule.current);
+    setResult(null);
+    setQueryError("");
+    setQuery("SELECT * FROM bugs;");
+    setCheckMessage({ type: "success", text: "The sample database has been reset." });
+  }
 
-    let learnerDb;
-    let expectedDb;
+  function handleExerciseHint() {
+    if (!selectedExercise?.hints.length) return;
+    const nextIndex = Math.min((hintIndex ?? 0) + 1, selectedExercise.hints.length - 1);
+    setHintsVisible(true);
+    setHintIndex(nextIndex);
+  }
+
+  function handleExerciseSelection(exercise) {
+    setSelectedExercise(exercise);
+    setQuery("");
+    setCheckMessage(null);
+    setHintsVisible(false);
+    setHintIndex(0);
+  }
+
+  function checkAnswer() {
+    if (!database.current || !selectedExercise) return;
+
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
+      setCheckMessage({ type: "error", text: "Write a query before checking the answer." });
+      return;
+    }
+
+    const nextAttemptCount = (attemptsByExercise[selectedExercise.id] ?? 0) + 1;
+    setAttemptsByExercise((current) => ({ ...current, [selectedExercise.id]: nextAttemptCount }));
+    setHintsVisible(false);
+    setHintIndex(0);
+
+    let learnerDb = null;
+    let expectedDb = null;
+
     try {
       learnerDb = seedDatabase(sqlModule.current);
       expectedDb = seedDatabase(sqlModule.current);
 
-      const learnerResult = runSql(learnerDb, query);
-      runSql(expectedDb, selectedExercise.answer);
-      const expectedQuery = selectedExercise.verify ?? selectedExercise.answer;
-      const expectedResult = runSql(expectedDb, expectedQuery);
+      const wantedOutput = runSql(expectedDb, selectedExercise.expectedQuery);
+      const learnerOutput = runSql(learnerDb, trimmedQuery);
+      const comparison = compareSqlResults(
+        learnerOutput,
+        wantedOutput,
+        { ignoreRowOrder: !/ORDER BY/i.test(selectedExercise.expectedQuery) },
+      );
 
-      const learnerComparison = selectedExercise.verify
-        ? runSql(learnerDb, selectedExercise.verify)
-        : learnerResult;
-      const expectedComparison = selectedExercise.verify
-        ? runSql(expectedDb, selectedExercise.verify)
-        : expectedResult;
-      const sameColumns =
-        learnerComparison.columns.length === expectedComparison.columns.length;
-      const sameRows =
-        normalizeRows(learnerComparison.values).join("|") ===
-        normalizeRows(expectedComparison.values).join("|");
-
-      if (!sameColumns || !sameRows) {
-        setCheckMessage({
-          type: "error",
-          text: "Not quite. Check your query and try again.",
-        });
+      if (!comparison.isMatch) {
+        setCheckMessage({ type: "error", text: `Not quite. ${comparison.reason}` });
+        persistProgress(selectedExercise.id, false, nextAttemptCount);
         return;
       }
 
-      const nextSolved = [...new Set([...solved, selectedExercise.id])];
-      setSolved(nextSolved);
-      localStorage.setItem(progressKey, JSON.stringify(nextSolved));
       setCheckMessage({ type: "success", text: "Correct! Exercise marked complete." });
+      persistProgress(selectedExercise.id, true, nextAttemptCount);
     } catch (error) {
       setCheckMessage({ type: "error", text: explainSqlError(error) });
+      persistProgress(selectedExercise.id, false, nextAttemptCount);
     } finally {
       learnerDb?.close();
       expectedDb?.close();
     }
   }
 
-  const tabs = ["Playground", "Lessons", "Exercises", "Tables", "Cheat sheet"];
+  function showSolution() {
+    if (!selectedExercise) return;
+    const confirmed = window.confirm(
+      "This will reveal the answer. Do you want to continue?",
+    );
+    if (!confirmed) return;
+    setQuery(selectedExercise.expectedQuery);
+    setCheckMessage({ type: "info", text: "The expected query is shown below. Try it in the playground." });
+  }
+
+  function previewTable(tableName) {
+    if (!database.current) return;
+    const queryText = `SELECT * FROM ${tableName} LIMIT 5;`;
+    const tableResult = runSql(database.current, queryText);
+    setTablePreview((current) => ({ ...current, [tableName]: tableResult }));
+  }
+
+  const failedAttempts = attemptsByExercise[selectedExercise.id] ?? 0;
+  const selectedExerciseProgress = exerciseProgress[selectedExercise.id] ?? { attemptCount: 0, completed: false };
 
   return (
     <>
@@ -256,12 +670,31 @@ export default function SqlPracticePage() {
         title="SQL practice"
         description="Learn query basics and run SQL against a seeded SQLite database in your browser."
       />
+
       {engineError ? (
         <Feedback message={`SQL engine failed to load: ${engineError}`} type="error" />
       ) : !engineReady ? (
         <Feedback message="Loading the in-browser SQL engine..." type="info" />
       ) : (
         <>
+          {progressError && <Feedback message={progressError} type="error" />}
+          {progressLoading && <Feedback message="Loading saved exercise progress..." type="info" />}
+
+          <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Your SQL progress</p>
+                <p className="text-sm text-slate-500">
+                  {completedExercises} of {totalExercises} exercises completed
+                </p>
+              </div>
+              <div className="text-xl font-bold text-indigo-700">{progressPercent}%</div>
+            </div>
+            <div className="mt-3">
+              <ProgressBar value={progressPercent} label="SQL practice progress" />
+            </div>
+          </div>
+
           <div className="mb-5 flex gap-1 overflow-x-auto rounded-xl bg-slate-200/70 p-1">
             {tabs.map((tab) => (
               <button
@@ -282,18 +715,30 @@ export default function SqlPracticePage() {
           {activeTab === "Playground" && (
             <div className="grid gap-5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
               <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                <h2 className="font-semibold text-slate-900">SQL editor</h2>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="font-semibold text-slate-900">SQL editor</h2>
+                  <button
+                    type="button"
+                    onClick={resetDatabase}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Reset database
+                  </button>
+                </div>
                 <p className="mt-1 text-sm text-slate-500">
                   Try SELECT, JOIN, UPDATE, or DELETE statements on your local sample database.
                 </p>
-                <label htmlFor="sql-query" className="sr-only">
-                  SQL query
-                </label>
                 <textarea
                   id="sql-query"
                   rows={12}
                   spellCheck="false"
                   value={query}
+                  onKeyDown={(event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+                      event.preventDefault();
+                      runQuery();
+                    }
+                  }}
                   onChange={(event) => setQuery(event.target.value)}
                   className="mt-4 w-full resize-y rounded-xl bg-slate-950 p-4 font-mono text-sm leading-6 text-emerald-200 outline-none focus:ring-4 focus:ring-indigo-500/20"
                 />
@@ -307,43 +752,73 @@ export default function SqlPracticePage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      setQuery(selectedExercise.answer);
-                      setQueryError("");
-                    }}
+                    onClick={() => setQuery(selectedExercise.expectedQuery)}
                     className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                   >
-                    Load answer
+                    Load exercise answer
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => downloadCsv(result)}
+                    disabled={!result || !result.columns.length}
+                    className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Export CSV
                   </button>
                 </div>
-                <Feedback message={queryError} type="error" />
-                {result && (
-                  <p className="mt-3 text-xs text-slate-500">
-                    {result.changedRows === null
-                      ? `${result.values.length} row(s) returned`
-                      : `${result.changedRows} row(s) changed`}
+
+                <div className="mt-3 space-y-2">
+                  <p className="text-xs text-slate-500">
+                    {result
+                      ? `${result.values.length} row(s) returned in ${executionTime} ms`
+                      : "Run a query to see the row count and time."}
                   </p>
-                )}
+                  {queryHistory.length > 0 && (
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                        Recent queries
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {queryHistory.map((historyItem, index) => (
+                          <button
+                            key={`${historyItem}-${index}`}
+                            type="button"
+                            onClick={() => setQuery(historyItem)}
+                            className="max-w-full truncate rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-left text-xs text-slate-700 hover:bg-slate-100"
+                          >
+                            {historyItem}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {queryError && <div className="mt-3"><Feedback message={queryError} type="error" /></div>}
               </section>
 
               <section className="min-h-72 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-                <div className="border-b border-slate-200 px-5 py-4">
+                <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
                   <h2 className="font-semibold text-slate-900">Query results</h2>
                 </div>
                 {result ? (
                   result.columns.length ? (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-left text-sm">
-                        <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                           <tr>
-                            {result.columns.map((column) => <th key={column} className="px-4 py-3">{column}</th>)}
+                            {result.columns.map((column) => (
+                              <th key={column} className="px-4 py-3 font-semibold">
+                                {column}
+                              </th>
+                            ))}
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                           {result.values.slice(0, 200).map((row, rowIndex) => (
                             <tr key={rowIndex}>
                               {row.map((value, columnIndex) => (
-                                <td key={columnIndex} className="whitespace-nowrap px-4 py-3 text-slate-700">
+                                <td key={`${rowIndex}-${columnIndex}`} className="whitespace-nowrap px-4 py-3 text-slate-700">
                                   {value === null ? <span className="italic text-slate-400">NULL</span> : String(value)}
                                 </td>
                               ))}
@@ -354,7 +829,7 @@ export default function SqlPracticePage() {
                     </div>
                   ) : (
                     <p className="p-5 text-sm text-slate-600">
-                      Query completed. {result.changedRows} row(s) changed.
+                      Query completed. {result.changedRows ?? 0} row(s) changed.
                     </p>
                   )
                 ) : (
@@ -382,38 +857,57 @@ export default function SqlPracticePage() {
           )}
 
           {activeTab === "Exercises" && (
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,0.65fr)_minmax(0,1.35fr)]">
-              <section className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4">
-                <h2 className="px-2 pb-2 font-semibold text-slate-900">
-                  Exercises <span className="text-sm font-normal text-slate-500">({solved.length}/{exercises.length} solved)</span>
-                </h2>
-                {exercises.map((exercise) => (
-                  <button
-                    key={exercise.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedExercise(exercise);
-                      setQuery("");
-                      setCheckMessage(null);
-                    }}
-                    className={`w-full rounded-xl px-3 py-3 text-left text-sm transition ${
-                      selectedExercise.id === exercise.id
-                        ? "bg-indigo-50 text-indigo-900"
-                        : "text-slate-700 hover:bg-slate-50"
-                    }`}
+            <div className="grid gap-5 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]">
+              <section className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center justify-between gap-3 px-2">
+                  <h2 className="font-semibold text-slate-900">
+                    Exercises <span className="text-sm font-normal text-slate-500">({completedExercises}/{totalExercises})</span>
+                  </h2>
+                  <select
+                    value={selectedDifficulty}
+                    onChange={(event) => setSelectedDifficulty(event.target.value)}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm text-slate-700"
                   >
-                    <span className="flex items-center justify-between gap-3">
-                      <span>{exercise.title}</span>
-                      {solved.includes(exercise.id) && <span className="text-emerald-600">✓</span>}
-                    </span>
-                  </button>
-                ))}
+                    <option value="all">All levels</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  {visibleExercises.map((exercise) => (
+                    <button
+                      key={exercise.id}
+                      type="button"
+                      onClick={() => handleExerciseSelection(exercise)}
+                      className={`w-full rounded-xl px-3 py-3 text-left text-sm transition ${
+                        selectedExercise.id === exercise.id
+                          ? "bg-indigo-50 text-indigo-900"
+                          : "text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-3">
+                        <span className="font-medium">{exercise.title}</span>
+                        <span className="text-xs uppercase tracking-wide text-slate-500">{exercise.difficulty}</span>
+                      </span>
+                      {completedExerciseIds.has(exercise.id) && (
+                        <span className="mt-1 block text-xs font-semibold text-emerald-600">Completed</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </section>
+
               <section className="rounded-2xl border border-slate-200 bg-white p-5">
                 <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600">Exercise</p>
                 <h2 className="mt-1 text-xl font-semibold text-slate-900">{selectedExercise.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-600">{selectedExercise.prompt}</p>
-                <label htmlFor="exercise-query" className="sr-only">Your SQL answer</label>
+                <div className="mt-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span>{selectedExercise.difficulty}</span>
+                  {selectedExerciseProgress.completed && <span className="text-emerald-600">✓ complete</span>}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{selectedExercise.task}</p>
+
                 <textarea
                   id="exercise-query"
                   rows={8}
@@ -423,6 +917,7 @@ export default function SqlPracticePage() {
                   placeholder="Write your query..."
                   className="mt-5 w-full resize-y rounded-xl bg-slate-950 p-4 font-mono text-sm leading-6 text-emerald-200 outline-none focus:ring-4 focus:ring-indigo-500/20"
                 />
+
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -438,25 +933,95 @@ export default function SqlPracticePage() {
                   >
                     Open playground
                   </button>
+                  {failedAttempts > 0 && !selectedExerciseProgress.completed && (
+                    <button
+                      type="button"
+                      onClick={showSolution}
+                      className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-700"
+                    >
+                      Show solution
+                    </button>
+                  )}
                 </div>
-                <div className="mt-4">
-                  <Feedback message={checkMessage?.text} type={checkMessage?.type} />
-                </div>
+
+                {selectedExercise.hints.length > 0 && (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-800">Hint</p>
+                      <button
+                        type="button"
+                        onClick={handleExerciseHint}
+                        className="text-sm font-semibold text-indigo-700"
+                      >
+                        {hintsVisible ? "Next hint" : "Reveal hint"}
+                      </button>
+                    </div>
+                    {hintsVisible && (
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {selectedExercise.hints[Math.min(hintIndex, selectedExercise.hints.length - 1)]}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {checkMessage && (
+                  <div className="mt-4">
+                    <Feedback message={checkMessage.text} type={checkMessage.type} />
+                  </div>
+                )}
               </section>
             </div>
           )}
 
           {activeTab === "Tables" && (
             <div className="grid gap-4 md:grid-cols-2">
-              {[
-                ["users", "id, name, email, role, active"],
-                ["bugs", "id, title, severity, status"],
-                ["test_cases", "id, title, module, status, tester_id"],
-                ["signups", "id, email, confirmed"],
-              ].map(([table, schema]) => (
-                <article key={table} className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <h2 className="font-mono text-sm font-semibold text-indigo-700">{table}</h2>
-                  <p className="mt-2 text-sm text-slate-600">{schema}</p>
+              {Object.entries(tableSchemas).map(([tableName, columns]) => (
+                <article key={tableName} className="rounded-2xl border border-slate-200 bg-white p-5">
+                  <div className="flex items-center justify-between gap-3">
+                    <h2 className="font-mono text-sm font-semibold text-indigo-700">{tableName}</h2>
+                    <button
+                      type="button"
+                      onClick={() => previewTable(tableName)}
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                    >
+                      Preview 5 rows
+                    </button>
+                  </div>
+                  <div className="mt-3 space-y-2 text-sm text-slate-600">
+                    {columns.map((column) => (
+                      <div key={`${tableName}-${column.name}`} className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-2 py-1.5">
+                        <span className="font-mono text-xs text-slate-700">{column.name}</span>
+                        <span className="text-xs text-slate-500">{column.type}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {tablePreview[tableName] && tablePreview[tableName].columns.length > 0 && (
+                    <div className="mt-4 overflow-x-auto">
+                      <table className="min-w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-500">
+                          <tr>
+                            {tablePreview[tableName].columns.map((column) => (
+                              <th key={`${tableName}-header-${column}`} className="px-2 py-1.5 font-semibold">
+                                {column}
+                              </th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {tablePreview[tableName].values.slice(0, 5).map((row, rowIndex) => (
+                            <tr key={`${tableName}-row-${rowIndex}`}>
+                              {row.map((value, columnIndex) => (
+                                <td key={`${tableName}-cell-${rowIndex}-${columnIndex}`} className="px-2 py-1.5 text-slate-700">
+                                  {value === null ? "NULL" : String(value)}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </article>
               ))}
             </div>
@@ -467,7 +1032,10 @@ export default function SqlPracticePage() {
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                    <tr><th className="px-5 py-3">Task</th><th className="px-5 py-3">SQL pattern</th></tr>
+                    <tr>
+                      <th className="px-5 py-3">Task</th>
+                      <th className="px-5 py-3">SQL pattern</th>
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {[
@@ -480,7 +1048,10 @@ export default function SqlPracticePage() {
                       ["Update rows", "UPDATE table SET column = value WHERE condition"],
                       ["Delete rows", "DELETE FROM table WHERE condition"],
                     ].map(([task, pattern]) => (
-                      <tr key={task}><td className="px-5 py-3 font-medium text-slate-800">{task}</td><td className="px-5 py-3 font-mono text-xs text-slate-600">{pattern}</td></tr>
+                      <tr key={task}>
+                        <td className="px-5 py-3 font-medium text-slate-800">{task}</td>
+                        <td className="px-5 py-3 font-mono text-xs text-slate-600">{pattern}</td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>

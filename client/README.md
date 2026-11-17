@@ -50,6 +50,14 @@ The Library includes Manual Testing, API Testing, SQL, and Automation Testing
 lessons with examples, exercises, and interview questions. The SQL Practice
 module remains separate and unchanged.
 
+## Automation learning tab
+
+The Automation testing page now includes a **Learn** tab with a simple 6-step
+starter path for beginners. Each lesson explains the idea in short, plain
+English, shows easy commands, and includes a copy button for the code blocks.
+Use the **Mark as done** button to save progress to the same
+`public.learning_progress` table used by the Resources page.
+
 ## Automation testing API
 
 The automation dashboard reads from the `public.automation_runs` and

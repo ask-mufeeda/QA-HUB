@@ -21,6 +21,7 @@ const AutomationTestingPage = lazy(
 const ResourcesPage = lazy(() => import("./pages/ResourcesPage.jsx"));
 const SqlPracticePage = lazy(() => import("./pages/SqlPracticePage.jsx"));
 const TestGeneratorPage = lazy(() => import("./pages/TestGeneratorPage.jsx"));
+const TestManagementPage = lazy(() => import("./pages/TestManagementPage.jsx"));
 const WorkspacePage = lazy(() => import("./pages/WorkspacePage.jsx"));
 
 const pageTitles = {
@@ -37,6 +38,7 @@ const pageTitles = {
   "/sql-practice": "SQL practice",
   "/resources": "Resources",
   "/test-generator-check": "Test generator",
+  "/test-management": "Test management",
   "/admin": "Admin",
   "/developer-dashboard": "Developer dashboard",
 };
@@ -81,6 +83,7 @@ export default function App() {
           <Route path="/sql-practice" element={<SqlPracticePage />} />
           <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/test-generator-check" element={<TestGeneratorPage />} />
+          <Route path="/test-management" element={<TestManagementPage />} />
           <Route
             path="/admin"
             element={
